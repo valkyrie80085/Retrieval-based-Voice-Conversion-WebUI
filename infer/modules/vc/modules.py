@@ -8,7 +8,7 @@ import soundfile as sf
 import torch
 from io import BytesIO
 
-from infer.lib.audio import load_audio, wav2
+from infer.lib.audio import load_audio, wav2, clean_path
 from infer.lib.infer_pack.models import (
     SynthesizerTrnMs256NSFsid,
     SynthesizerTrnMs256NSFsid_nono,
@@ -17,6 +17,8 @@ from infer.lib.infer_pack.models import (
 )
 from infer.modules.vc.pipeline import Pipeline
 from infer.modules.vc.utils import *
+
+import os, time
 
 
 class VC:
@@ -39,14 +41,14 @@ class VC:
         to_return_protect0 = {
             "visible": self.if_f0 != 0,
             "value": (
-                to_return_protect[0] if self.if_f0 != 0 and to_return_protect else 0.5
+                to_return_protect[0] if self.if_f0 != 0 and to_return_protect else 1.0
             ),
             "__type__": "update",
         }
         to_return_protect1 = {
             "visible": self.if_f0 != 0,
             "value": (
-                to_return_protect[1] if self.if_f0 != 0 and to_return_protect else 0.33
+                to_return_protect[1] if self.if_f0 != 0 and to_return_protect else 0.67
             ),
             "__type__": "update",
         }
@@ -157,15 +159,47 @@ class VC:
         resample_sr,
         rms_mix_rate,
         protect,
+        f0_invert_axis=" ",
+        feature_audio_path="",
+        if_feature_average=False,
+        segment_length=None,
+        f0_npy_path="",
+        output_to_file=True,
     ):
         if input_audio_path is None:
             return "You need to upload an audio", None
+        if feature_audio_path != "":
+            feature_audio_path = clean_path(feature_audio_path)
+        if f0_npy_path != "":
+            f0_npy_path = clean_path(f0_npy_path)
+        input_audio_path = clean_path(input_audio_path)  # 防止小白拷路径头尾带了空格和"和回车
         f0_up_key = int(f0_up_key)
+
+        if f0_invert_axis != " ":
+            notes = ["C2", "C#2/Db2", "D2", "D#2/Eb2", "E2", "F2", "F#2/Gb2", "G2", "G#2/Ab2", "A2", "A#2/Bb2", "B2", "C3", "C#3/Db3", "D3", "D#3/Eb3", "E3", "F3", "F#3/Gb3", "G3", "G#3/Ab3", "A3", "A#3/Bb3", "B3", "C4", "C#4/Db4", "D4", "D#4/Eb4", "E4", "F4", "F#4/Gb4", "G4", "G#4/Ab4", "A4", "A#4/Bb4", "B4", "C4", "C#4/Db4", "D4", "D#4/Eb4", "E4", "F4", "F#4/Gb4", "G4", "G#4/Ab4", "A4", "A#4/Bb4", "B4", "C5", "C#5/Db5", "D5", "D#5/Eb5", "E5", "F5", "F#5/Gb5", "G5", "G#5/Ab5", "A5", "A#5/Bb5", "B5"]
+            offset = -33
+            for note in notes:
+                if note == f0_invert_axis:
+                    break
+                offset += 1
+            f0_invert_axis = 440 * (2 ** (offset / 12))
+        else:
+            f0_invert_axis = None
+
         try:
             audio = load_audio(input_audio_path, 16000)
             audio_max = np.abs(audio).max() / 0.95
             if audio_max > 1:
                 audio /= audio_max
+
+            if feature_audio_path != "":
+                feature_audio = load_audio(feature_audio_path, 16000)
+                feature_audio_max = np.abs(feature_audio).max() / 0.95
+                if feature_audio_max > 1:
+                    feature_audio /= feature_audio_max
+            else:
+                feature_audio = None
+
             times = [0, 0, 0]
 
             if self.hubert_model is None:
@@ -203,7 +237,12 @@ class VC:
                 rms_mix_rate,
                 self.version,
                 protect,
-                f0_file,
+                f0_invert_axis,
+                f0_file=f0_file,
+                feature_audio=feature_audio,
+                if_feature_average=if_feature_average,
+                x_center_override=segment_length,
+                f0_npy_path=f0_npy_path,
             )
             if self.tgt_sr != resample_sr >= 16000:
                 tgt_sr = resample_sr
@@ -214,6 +253,13 @@ class VC:
                 if os.path.exists(file_index)
                 else "Index not used."
             )
+            if output_to_file:
+                try:
+                    sf.write("D:/matthew99/AI/singing_ai/tmp/output %s %.0f %.2f %.2f %.2f %s %f.wav" % (os.path.splitext(os.path.split(input_audio_path)[1])[0], f0_up_key, index_rate, protect, segment_length, f0_method, time.time() * 1000), audio_opt, tgt_sr) 
+                    print("Success.\n%s\nTime:\nnpy: %.2fs, f0: %.2fs, infer: %.2fs."
+                        % (index_info, *times))
+                except:
+                    pass
             return (
                 "Success.\n%s\nTime:\nnpy: %.2fs, f0: %.2fs, infer: %.2fs."
                 % (index_info, *times),
@@ -242,10 +288,8 @@ class VC:
         format1,
     ):
         try:
-            dir_path = (
-                dir_path.strip(" ").strip('"').strip("\n").strip('"').strip(" ")
-            )  # 防止小白拷路径头尾带了空格和"和回车
-            opt_root = opt_root.strip(" ").strip('"').strip("\n").strip('"').strip(" ")
+            dir_path = clean_path(dir_path) # 防止小白拷路径头尾带了空格和"和回车
+            opt_root = clean_path(opt_root)
             os.makedirs(opt_root, exist_ok=True)
             try:
                 if dir_path != "":

@@ -10,6 +10,7 @@ import logging
 
 import numpy as np
 import pyworld
+import torch, torchcrepe
 
 from infer.lib.audio import load_audio
 
@@ -81,6 +82,36 @@ class FeatureInput(object):
                 frame_period=1000 * self.hop / self.fs,
             )
             f0 = pyworld.stonemask(x.astype(np.double), f0, t, self.fs)
+        elif f0_method == "crepe":
+            # Pick a batch size that doesn't cause memory errors on your gpu
+            torch_device_index = 0
+            torch_device = None
+            if torch.cuda.is_available():
+                torch_device = torch.device(f"cuda:{torch_device_index % torch.cuda.device_count()}")
+            elif torch.backends.mps.is_available():
+                torch_device = torch.device("mps")
+            else:
+                torch_device = torch.device("cpu")
+            model = "full"
+            batch_size = 512
+            # Compute pitch using first gpu
+            audio = torch.tensor(np.copy(x))[None].float()
+            f0, pd = torchcrepe.predict(
+                audio,
+                self.fs,
+                160,
+                self.f0_min,
+                self.f0_max,
+                model,
+                batch_size=batch_size,
+                device=torch_device,
+                return_periodicity=True,
+            )
+            pd = torchcrepe.filter.median(pd, 3)
+            f0 = torchcrepe.filter.mean(f0, 3)
+            f0[pd < 0.1] = 0
+            f0 = f0[0].cpu().numpy()
+            f0 = f0[1:] # Get rid of extra first frame
         elif f0_method == "rmvpe":
             if hasattr(self, "model_rmvpe") == False:
                 from infer.lib.rmvpe import RMVPE
@@ -114,27 +145,25 @@ class FeatureInput(object):
         else:
             printt("todo-f0-%s" % len(paths))
             n = max(len(paths) // 5, 1)  # 每个进程最多打印5条
-            for idx, (inp_path, opt_path1, opt_path2) in enumerate(paths):
+            for idx, (inp_path, opt_root1, opt_root2, variations) in enumerate(paths):
                 try:
                     if idx % n == 0:
                         printt("f0ing,now-%s,all-%s,-%s" % (idx, len(paths), inp_path))
-                    if (
-                        os.path.exists(opt_path1 + ".npy") == True
-                        and os.path.exists(opt_path2 + ".npy") == True
-                    ):
-                        continue
                     featur_pit = self.compute_f0(inp_path, f0_method)
-                    np.save(
-                        opt_path2,
-                        featur_pit,
-                        allow_pickle=False,
-                    )  # nsf
                     coarse_pit = self.coarse_f0(featur_pit)
-                    np.save(
-                        opt_path1,
-                        coarse_pit,
-                        allow_pickle=False,
-                    )  # ori
+                    for name in variations:
+                        opt_path1 = "%s/%s" % (opt_root1, name)
+                        opt_path2 = "%s/%s" % (opt_root2, name)
+                        np.save(
+                            opt_path2,
+                            featur_pit,
+                            allow_pickle=False,
+                        )  # nsf
+                        np.save(
+                            opt_path1,
+                            coarse_pit,
+                            allow_pickle=False,
+                        )  # ori
                 except:
                     printt("f0fail-%s-%s-%s" % (idx, inp_path, traceback.format_exc()))
 
@@ -143,7 +172,7 @@ if __name__ == "__main__":
     # exp_dir=r"E:\codes\py39\dataset\mi-test"
     # n_p=16
     # f = open("%s/log_extract_f0.log"%exp_dir, "w")
-    printt(" ".join(sys.argv))
+    printt(sys.argv)
     featureInput = FeatureInput()
     paths = []
     inp_root = "%s/1_16k_wavs" % (exp_dir)
@@ -152,13 +181,21 @@ if __name__ == "__main__":
 
     os.makedirs(opt_root1, exist_ok=True)
     os.makedirs(opt_root2, exist_ok=True)
+    variations = dict()
     for name in sorted(list(os.listdir(inp_root))):
-        inp_path = "%s/%s" % (inp_root, name)
-        if "spec" in inp_path:
-            continue
-        opt_path1 = "%s/%s" % (opt_root1, name)
-        opt_path2 = "%s/%s" % (opt_root2, name)
-        paths.append([inp_path, opt_path1, opt_path2])
+        if "(" not in name:
+            if name not in variations:
+                variations[name] = []
+            variations[name].append(name)
+            inp_path = "%s/%s" % (inp_root, name)
+            if "spec" in inp_path:
+                continue
+            paths.append([inp_path, opt_root1, opt_root2, variations[name]])
+        else:
+            name_root = name[:name.find("(") - 1] + name[name.find("."):]
+            if name_root not in variations:
+                variations[name_root] = []
+            variations[name_root].append(name)
 
     ps = []
     for i in range(n_p):

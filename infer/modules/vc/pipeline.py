@@ -18,13 +18,14 @@ import torch.nn.functional as F
 import torchcrepe
 from scipy import signal
 
+from infer.lib.audio import extract_features_simple
+
 now_dir = os.getcwd()
 sys.path.append(now_dir)
 
 bh, ah = signal.butter(N=5, Wn=48, btype="high", fs=16000)
 
 input_audio_path2wav = {}
-
 
 @lru_cache
 def cache_harvest_f0(input_audio_path, fs, f0max, f0min, frame_period):
@@ -63,7 +64,7 @@ def change_rms(data1, sr1, data2, sr2, rate):  # 1是输入音频，2是输出�
 
 
 class Pipeline(object):
-    def __init__(self, tgt_sr, config):
+    def __init__(self, tgt_sr, config, x_query=None):
         self.x_pad, self.x_query, self.x_center, self.x_max, self.is_half = (
             config.x_pad,
             config.x_query,
@@ -89,7 +90,9 @@ class Pipeline(object):
         f0_up_key,
         f0_method,
         filter_radius,
+        f0_invert_axis=None,
         inp_f0=None,
+        f0_npy_path=""
     ):
         global input_audio_path2wav
         time_step = self.window / self.sr * 1000
@@ -97,7 +100,9 @@ class Pipeline(object):
         f0_max = 1100
         f0_mel_min = 1127 * np.log(1 + f0_min / 700)
         f0_mel_max = 1127 * np.log(1 + f0_max / 700)
-        if f0_method == "pm":
+        if f0_npy_path != "":
+            f0 = np.load(f0_npy_path)
+        elif f0_method == "pm":
             f0 = (
                 parselmouth.Sound(x, self.sr)
                 .to_pitch_ac(
@@ -139,7 +144,7 @@ class Pipeline(object):
             f0 = torchcrepe.filter.mean(f0, 3)
             f0[pd < 0.1] = 0
             f0 = f0[0].cpu().numpy()
-        elif f0_method == "rmvpe":
+        elif f0_method.startswith("rmvpe"):
             if not hasattr(self, "model_rmvpe"):
                 from infer.lib.rmvpe import RMVPE
 
@@ -152,11 +157,39 @@ class Pipeline(object):
                     device=self.device,
                 )
             f0 = self.model_rmvpe.infer_from_audio(x, thred=0.03)
+            if f0_method == "rmvpe_alt":
+                model = "full"
+                # Pick a batch size that doesn't cause memory errors on your gpu
+                batch_size = 512
+                # Compute pitch using first gpu
+                audio = torch.tensor(np.copy(x))[None].float()
+                _, pd = torchcrepe.predict(
+                    audio,
+                    self.sr,
+                    self.window,
+                    f0_min,
+                    f0_max,
+                    model,
+                    batch_size=batch_size,
+                    device=self.device,
+                    return_periodicity=True,
+                )
+                pd = torchcrepe.filter.median(pd, 3)
+                pd = pd[0].cpu().numpy()
+                pd = np.interp(
+                            np.arange(0, len(pd) * f0.shape[0], len(pd)) / f0.shape[0],
+                            np.arange(0, len(pd)),
+                            pd
+                        )
+                f0[pd < 0.1] = 0
 
             if "privateuseone" in str(self.device):  # clean ortruntime memory
                 del self.model_rmvpe.model
                 del self.model_rmvpe
                 logger.info("Cleaning ortruntime memory")
+
+        if f0_invert_axis is not None:
+            f0 = np.where(f0 >= f0_min, (f0_invert_axis ** 2) / f0, f0)
 
         f0 *= pow(2, f0_up_key / 12)
         # with open("test.txt","w")as f:f.write("\n".join([str(i)for i in f0.tolist()]))
@@ -197,33 +230,16 @@ class Pipeline(object):
         index_rate,
         version,
         protect,
+        feature_override=None,
     ):  # ,file_index,file_big_npy
-        feats = torch.from_numpy(audio0)
-        if self.is_half:
-            feats = feats.half()
-        else:
-            feats = feats.float()
-        if feats.dim() == 2:  # double channels
-            feats = feats.mean(-1)
-        assert feats.dim() == 1, feats.dim()
-        feats = feats.view(1, -1)
-        padding_mask = torch.BoolTensor(feats.shape).to(self.device).fill_(False)
-
-        inputs = {
-            "source": feats.to(self.device),
-            "padding_mask": padding_mask,
-            "output_layer": 9 if version == "v1" else 12,
-        }
         t0 = ttime()
-        with torch.no_grad():
-            logits = model.extract_features(**inputs)
-            feats = model.final_proj(logits[0]) if version == "v1" else logits[0]
-        if protect < 0.5 and pitch is not None and pitchf is not None:
+        feats = extract_features_simple(audio0, model=model, version=version, device=self.device, is_half=self.is_half)
+        if pitch is not None and pitchf is not None:
             feats0 = feats.clone()
+            feats_indexed = feats.clone()
         if (
             not isinstance(index, type(None))
             and not isinstance(big_npy, type(None))
-            and index_rate != 0
         ):
             npy = feats[0].cpu().numpy()
             if self.is_half:
@@ -239,14 +255,15 @@ class Pipeline(object):
 
             if self.is_half:
                 npy = npy.astype("float16")
-            feats = (
-                torch.from_numpy(npy).unsqueeze(0).to(self.device) * index_rate
-                + (1 - index_rate) * feats
-            )
+            feats_indexed = torch.from_numpy(npy).unsqueeze(0).to(self.device)
+            feats = feats_indexed * index_rate + (1 - index_rate) * feats
 
         feats = F.interpolate(feats.permute(0, 2, 1), scale_factor=2).permute(0, 2, 1)
-        if protect < 0.5 and pitch is not None and pitchf is not None:
+        if pitch is not None and pitchf is not None:
             feats0 = F.interpolate(feats0.permute(0, 2, 1), scale_factor=2).permute(
+                0, 2, 1
+            )
+            feats_indexed = F.interpolate(feats_indexed.permute(0, 2, 1), scale_factor=2).permute(
                 0, 2, 1
             )
         t1 = ttime()
@@ -257,20 +274,22 @@ class Pipeline(object):
                 pitch = pitch[:, :p_len]
                 pitchf = pitchf[:, :p_len]
 
-        if protect < 0.5 and pitch is not None and pitchf is not None:
+        if pitch is not None and pitchf is not None and not isinstance(index, type(None)) and not isinstance(big_npy, type(None)):
             pitchff = pitchf.clone()
             pitchff[pitchf > 0] = 1
-            pitchff[pitchf < 1] = protect
+            pitchff[pitchf < 1] = 0
             pitchff = pitchff.unsqueeze(-1)
-            feats = feats * pitchff + feats0 * (1 - pitchff)
+            feats = feats * pitchff + (feats0 * (1 - protect) + feats_indexed * protect) * (1 - pitchff)
             feats = feats.to(feats0.dtype)
+        if feature_override is not None:
+            feats[:,:] = feature_override
         p_len = torch.tensor([p_len], device=self.device).long()
         with torch.no_grad():
             hasp = pitch is not None and pitchf is not None
             arg = (feats, p_len, pitch, pitchf, sid) if hasp else (feats, p_len, sid)
             audio1 = (net_g.infer(*arg)[0][0, 0]).data.cpu().float().numpy()
             del hasp, arg
-        del feats, p_len, padding_mask
+        del feats, p_len
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         t2 = ttime()
@@ -297,14 +316,18 @@ class Pipeline(object):
         rms_mix_rate,
         version,
         protect,
+        f0_invert_axis=None,
+        feature_audio=None,
+        if_feature_average=False,
+        x_center_override=None,
         f0_file=None,
+        f0_npy_path="",
     ):
         if (
             file_index != ""
             # and file_big_npy != ""
             # and os.path.exists(file_big_npy) == True
             and os.path.exists(file_index)
-            and index_rate != 0
         ):
             try:
                 index = faiss.read_index(file_index)
@@ -315,20 +338,37 @@ class Pipeline(object):
                 index = big_npy = None
         else:
             index = big_npy = None
+        if if_feature_average:
+            feats = extract_features_simple(feature_audio, model=model, version=version, device=self.device, is_half=self.is_half)
+            npy = feats[0].cpu().numpy()
+            npy = np.average(npy, axis=0)
+            feature_override = torch.from_numpy(npy).to(self.device)
+        else:
+            feature_override = None
+            if feature_audio is not None:
+                if feature_audio.shape[0] > audio.shape[0]:
+                    feature_audio = feature_audio[:audio.shape[0]]
+                else:
+                    feature_audio = np.pad(feature_audio, (0, audio.shape[0] - feature_audio.shape[0]), mode="constant")
         audio = signal.filtfilt(bh, ah, audio)
         audio_pad = np.pad(audio, (self.window // 2, self.window // 2), mode="reflect")
+        if feature_audio is not None:
+            feature_audio = signal.filtfilt(bh, ah, feature_audio)
+            feature_audio_pad = np.pad(feature_audio, (self.window // 2, self.window // 2), mode="reflect")
         opt_ts = []
+        t_center = self.t_center if x_center_override is None else round(x_center_override * self.sr)
+        t_query = min(self.t_query, t_center // 2)
         if audio_pad.shape[0] > self.t_max:
             audio_sum = np.zeros_like(audio)
             for i in range(self.window):
                 audio_sum += np.abs(audio_pad[i : i - self.window])
-            for t in range(self.t_center, audio.shape[0], self.t_center):
+            for t in range(t_center, audio.shape[0], t_center):
                 opt_ts.append(
                     t
-                    - self.t_query
+                    - t_query
                     + np.where(
-                        audio_sum[t - self.t_query : t + self.t_query]
-                        == audio_sum[t - self.t_query : t + self.t_query].min()
+                        audio_sum[t - t_query : t + t_query]
+                        == audio_sum[t - t_query : t + t_query].min()
                     )[0][0]
                 )
         s = 0
@@ -336,6 +376,8 @@ class Pipeline(object):
         t = None
         t1 = ttime()
         audio_pad = np.pad(audio, (self.t_pad, self.t_pad), mode="reflect")
+        if feature_audio is not None:
+            feature_audio_pad = np.pad(feature_audio, (self.t_pad, self.t_pad), mode="reflect")
         p_len = audio_pad.shape[0] // self.window
         inp_f0 = None
         if hasattr(f0_file, "name"):
@@ -358,7 +400,9 @@ class Pipeline(object):
                 f0_up_key,
                 f0_method,
                 filter_radius,
+                f0_invert_axis,
                 inp_f0,
+                f0_npy_path,
             )
             pitch = pitch[:p_len]
             pitchf = pitchf[:p_len]
@@ -366,6 +410,8 @@ class Pipeline(object):
                 pitchf = pitchf.astype(np.float32)
             pitch = torch.tensor(pitch, device=self.device).unsqueeze(0).long()
             pitchf = torch.tensor(pitchf, device=self.device).unsqueeze(0).float()
+        if feature_audio is not None and not if_feature_average:
+            audio, audio_pad = feature_audio, feature_audio_pad
         t2 = ttime()
         times[1] += t2 - t1
         for t in opt_ts:
@@ -385,6 +431,7 @@ class Pipeline(object):
                         index_rate,
                         version,
                         protect,
+                        feature_override=feature_override
                     )[self.t_pad_tgt : -self.t_pad_tgt]
                 )
             else:
@@ -402,6 +449,7 @@ class Pipeline(object):
                         index_rate,
                         version,
                         protect,
+                        feature_override=feature_override
                     )[self.t_pad_tgt : -self.t_pad_tgt]
                 )
             s = t
@@ -420,6 +468,7 @@ class Pipeline(object):
                     index_rate,
                     version,
                     protect,
+                    feature_override=feature_override
                 )[self.t_pad_tgt : -self.t_pad_tgt]
             )
         else:
@@ -437,6 +486,7 @@ class Pipeline(object):
                     index_rate,
                     version,
                     protect,
+                    feature_override=feature_override
                 )[self.t_pad_tgt : -self.t_pad_tgt]
             )
         audio_opt = np.concatenate(audio_opt)

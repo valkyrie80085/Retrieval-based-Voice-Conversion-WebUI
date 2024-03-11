@@ -3,9 +3,20 @@ __pycache__
 /TEMP
 *.pyd
 .venv
+*.swp
+*.swo
+configs/32k.json
+configs/32k_v2.json
+configs/48k.json
+configs/32k.json
+configs/32k_v2.json
+configs/48k_v2.json
+configs/40k.json
+configs/48k_v2.json
 /opt
 tools/aria2c/
 tools/flag.txt
+/torchcrepe
 
 # Imported from huggingface.co/lj1995/VoiceConversionWebUI
 /pretrained
@@ -26,3 +37,6 @@ rmvpe.pt
 /assets/weights/*
 ffmpeg.*
 ffprobe.*
+/f0_magic/
+*.pt
+f0_test_config.json

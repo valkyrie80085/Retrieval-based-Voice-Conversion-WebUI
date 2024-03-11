@@ -20,7 +20,7 @@ jobs:
         sudo apt update
         sudo apt -y install ffmpeg
         sudo apt -y install -qq aria2
-        aria2c --console-log-level=error -c -x 16 -s 16 -k 1M https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/hubert_base.pt -d ./ -o hubert_base.pt
+        aria2c --console-log-level=error -c -x 16 -s 16 -k 1M https://huggingface.co/lj1995/VoiceConversionWebUI/resolve/main/hubert_base.pt -d ./ -o assets/hubert/hubert_base.pt
         python -m pip install --upgrade pip
         python -m pip install --upgrade setuptools
         python -m pip install --upgrade wheel
@@ -30,7 +30,7 @@ jobs:
       run: |
         mkdir -p logs/mi-test
         touch logs/mi-test/preprocess.log
-        python infer/modules/train/preprocess.py logs/mute/0_gt_wavs 48000 8 logs/mi-test True 3.7
+        python infer/modules/train/preprocess.py logs/mute/0_gt_wavs 48000 8 logs/mi-test True 3.7 v1 1.5 0
         touch logs/mi-test/extract_f0_feature.log
         python infer/modules/train/extract/extract_f0_print.py logs/mi-test $(nproc) pm
         python infer/modules/train/extract_feature_print.py cpu 1 0 0 logs/mi-test v1 True

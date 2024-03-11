@@ -25,6 +25,11 @@ from infer.lib.slicer2 import Slicer
 
 f = open("%s/preprocess.log" % exp_dir, "a+")
 
+SEGMENTATION_VARIATION_COUNT_BASE = int(float(sys.argv[-2]))
+SEGMENTATION_VARIATION_COUNT_EXTRA_PROB = float(sys.argv[-2]) - SEGMENTATION_VARIATION_COUNT_BASE
+
+PITCH_VARIATION_COUNT_BASE = int(float(sys.argv[-1]))
+PITCH_VARIATION_COUNT_EXTRA_PROB = float(sys.argv[-1]) - PITCH_VARIATION_COUNT_BASE
 
 def println(strr):
     print(strr)
@@ -56,50 +61,71 @@ class PreProcess:
         os.makedirs(self.gt_wavs_dir, exist_ok=True)
         os.makedirs(self.wavs16k_dir, exist_ok=True)
 
-    def norm_write(self, tmp_audio, idx0, idx1):
+    def norm_write(self, tmp_audio, idx0, idx1, idx2):
         tmp_max = np.abs(tmp_audio).max()
         if tmp_max > 2.5:
-            print("%s-%s-%s-filtered" % (idx0, idx1, tmp_max))
+            print("%s-%s-%s- %s-filtered" % (idx0, idx1, idx2, tmp_max))
             return
-        tmp_audio = (tmp_audio / tmp_max * (self.max * self.alpha)) + (
+        tmp_audio1 = (tmp_audio / tmp_max * (self.max * self.alpha)) + (
             1 - self.alpha
         ) * tmp_audio
-        wavfile.write(
-            "%s/%s_%s.wav" % (self.gt_wavs_dir, idx0, idx1),
-            self.sr,
-            tmp_audio.astype(np.float32),
-        )
-        tmp_audio = librosa.resample(
-            tmp_audio, orig_sr=self.sr, target_sr=16000
+        tmp_audio2 = librosa.resample(
+            tmp_audio1, orig_sr=self.sr, target_sr=16000
         )  # , res_type="soxr_vhq"
         wavfile.write(
-            "%s/%s_%s.wav" % (self.wavs16k_dir, idx0, idx1),
-            16000,
-            tmp_audio.astype(np.float32),
+            "%s/%s_%s_%s.wav" % (self.gt_wavs_dir, idx0, idx1, idx2),
+            self.sr,
+            tmp_audio1.astype(np.float32),
         )
+        wavfile.write(
+            "%s/%s_%s_%s.wav" % (self.wavs16k_dir, idx0, idx1, idx2),
+            16000,
+            tmp_audio2.astype(np.float32),
+        )
+
+        pitch_variation_count = PITCH_VARIATION_COUNT_BASE + (np.random.uniform(0, 1) < PITCH_VARIATION_COUNT_EXTRA_PROB)
+        for pitch_variation in range(pitch_variation_count):
+            delta = np.random.uniform(0, 1)
+            delta_string = str(delta).replace(".", "_")
+
+            wavfile.write(
+                "%s/%s_%s_%s_(%s).wav" % (self.gt_wavs_dir, idx0, idx1, idx2, delta_string),
+                self.sr,
+                tmp_audio1.astype(np.float32),
+            )
+            wavfile.write(
+                "%s/%s_%s_%s_(%s).wav" % (self.wavs16k_dir, idx0, idx1, idx2, delta_string),
+                16000,
+                tmp_audio2.astype(np.float32),
+            )
 
     def pipeline(self, path, idx0):
         try:
-            audio = load_audio(path, self.sr)
-            # zero phased digital filter cause pre-ringing noise...
-            # audio = signal.filtfilt(self.bh, self.ah, audio)
-            audio = signal.lfilter(self.bh, self.ah, audio)
+            segmentation_variation_count = SEGMENTATION_VARIATION_COUNT_BASE + (np.random.uniform(0, 1) < SEGMENTATION_VARIATION_COUNT_EXTRA_PROB)
+            for idx1 in range(segmentation_variation_count):
+                audio = load_audio(path, self.sr)
+                # zero phased digital filter cause pre-ringing noise...
+                # audio = signal.filtfilt(self.bh, self.ah, audio)
+                audio = signal.lfilter(self.bh, self.ah, audio)
 
-            idx1 = 0
-            for audio in self.slicer.slice(audio):
-                i = 0
-                while 1:
-                    start = int(self.sr * (self.per - self.overlap) * i)
-                    i += 1
-                    if len(audio[start:]) > self.tail * self.sr:
-                        tmp_audio = audio[start : start + int(self.per * self.sr)]
-                        self.norm_write(tmp_audio, idx0, idx1)
-                        idx1 += 1
-                    else:
-                        tmp_audio = audio[start:]
-                        idx1 += 1
-                        break
-                self.norm_write(tmp_audio, idx0, idx1)
+                idx2 = 0
+                import random
+                actual_per = random.uniform(self.per * .75, self.per * 1.5)
+                actual_overlap = min(self.overlap, actual_per / 2)
+                for audio in [audio]:#self.slicer.slice(audio):
+                    i = 0
+                    while 1:
+                        start = int(self.sr * (actual_per - actual_overlap) * i)
+                        i += 1
+                        if len(audio[start:]) > (actual_per + actual_overlap) * self.sr:
+                            tmp_audio = audio[start : start + int(actual_per * self.sr)]
+                            self.norm_write(tmp_audio, idx0, idx1, idx2)
+                            idx2 += 1
+                        else:
+                            tmp_audio = audio[start:]
+                            idx2 += 1
+                            break
+                    self.norm_write(tmp_audio, idx0, idx1, idx2)
             println("%s\t-> Success" % path)
         except:
             println("%s\t-> %s" % (path, traceback.format_exc()))
@@ -132,6 +158,21 @@ class PreProcess:
 
 
 def preprocess_trainset(inp_root, sr, n_p, exp_dir, per):
+    import os, shutil
+    for _folder in os.listdir(exp_dir):
+        if _folder[0].isdigit():
+            folder = os.path.join(exp_dir, _folder)
+            if os.path.isdir(folder):
+                for filename in os.listdir(folder):
+                    file_path = os.path.join(folder, filename)
+                    try:
+                        if os.path.isfile(file_path) or os.path.islink(file_path):
+                            os.unlink(file_path)
+                        elif os.path.isdir(file_path):
+                            shutil.rmtree(file_path)
+                    except Exception as e:
+                        print('Failed to delete %s. Reason: %s' % (file_path, e))
+
     pp = PreProcess(sr, exp_dir, per)
     println("start preprocess")
     pp.pipeline_mp_inp_dir(inp_root, n_p)

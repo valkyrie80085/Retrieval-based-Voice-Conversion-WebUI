@@ -1,9 +1,17 @@
 import platform, os
 import ffmpeg
+import traceback
+
+import librosa
 import numpy as np
 import av
 from io import BytesIO
 
+import torch, torchcrepe
+
+import sys
+now_dir = os.getcwd()
+sys.path.append(now_dir)
 
 def wav2(i, o, format):
     inp = av.open(i, "rb")
@@ -49,3 +57,118 @@ def clean_path(path_str):
     if platform.system() == "Windows":
         path_str = path_str.replace("/", "\\")
     return path_str.strip(" ").strip('"').strip("\n").strip('"').strip(" ")
+
+
+def extract_features_simple(audio, model, version, device, is_half=False, sr=16000):
+    if sr != 16000:
+        audio = librosa.resample(
+            audio, orig_sr=sr, target_sr=16000
+        )  # , res_type="soxr_vhq"
+
+    feats = torch.from_numpy(audio)
+    if is_half:
+        feats = feats.half()
+    else:
+        feats = feats.float()
+    if feats.dim() == 2:  # double channels
+        feats = feats.mean(-1)
+    feats = feats.view(1, -1)
+    padding_mask = torch.BoolTensor(feats.shape).fill_(False)
+    inputs = {
+        "source": feats.half().to(device)
+        if device not in ["mps", "cpu"]
+        else feats.to(device),
+        "padding_mask": padding_mask.to(device),
+        "output_layer": 9 if version == "v1" else 12,  # layer 9
+    }
+    with torch.no_grad():
+        logits = model.extract_features(**inputs)
+        feats = (
+            model.final_proj(logits[0]) if version == "v1" else logits[0]
+        )
+    return feats
+
+
+def extract_features_new(audio_original, audio_shifted, model, version, device, is_half=False):
+    feats_original = extract_features_simple(audio_original, model=model, version=version, device=device, sr=16000, is_half=is_half)
+    if audio_shifted is None:
+        return feats_original
+    feats_shifted = extract_features_simple(audio_shifted, model=model, version=version, device=device, sr=16000, is_half=is_half)
+
+    def get_pd(audio, target_length):
+        # Pick a batch size that doesn't cause memory errors on your gpu
+        torch_device_index = 0
+        torch_device = None
+        if torch.cuda.is_available():
+            torch_device = torch.device(f"cuda:{torch_device_index % torch.cuda.device_count()}")
+        elif torch.backends.mps.is_available():
+            torch_device = torch.device("mps")
+        else:
+            torch_device = torch.device("cpu")
+        # Compute pitch using first gpu
+        audio_tensor = torch.tensor(np.copy(audio_shifted))[None].float()
+        f0_crepe, pd = torchcrepe.predict(
+            audio_tensor,
+            16000,
+            160,
+            50.0,
+            1100.0,
+            "full",
+            batch_size=512,
+            device=torch_device,
+            return_periodicity=True,
+        )
+        pd = torchcrepe.filter.median(pd, 3)
+        f0_crepe = torchcrepe.filter.mean(f0_crepe, 3)
+        f0_crepe[pd < 0.1] = 0
+        f0_crepe = f0_crepe[0].cpu().numpy()
+        f0_crepe = f0_crepe[1:] # Get rid of extra first frame
+        pd = pd[0].cpu().numpy()
+        pd = pd[1:]
+
+        pd = np.interp(
+                    np.arange(0, len(pd) * target_len, len(pd)) / target_len,
+                    np.arange(0, len(pd)),
+                    pd
+                )
+        return np.clip((pd - 0.5) / 0.2, 0, 1)
+
+    # Resize the pitch
+    target_len = min(feats_original.shape[1], feats_shifted.shape[1])
+    feats_original, feats_shifted = feats_original[:, :target_len], feats_shifted[:, :target_len]
+
+    pd_original = get_pd(audio_original, target_len)
+    pd_shifted = get_pd(audio_shifted, target_len)
+    mask = pd_original * pd_shifted + (1 - pd_original) * (1 - pd_shifted)
+    mask = torch.tensor(mask, device=device).unsqueeze(-1)
+    if is_half:
+        mask = mask.half()
+    else:
+        mask = mask.float()
+    return feats_shifted * mask + feats_original * (1 - mask)
+
+def pitch_blur_mel(f0_mel, tf0, border = 1 / 10, radius=1 / 20):
+    from scipy.ndimage import gaussian_filter1d
+    f0_mel_pad = np.concatenate(([0], f0_mel))
+    f0_mel_segments = np.split(f0_mel_pad, np.where(f0_mel_pad < 0.001)[0])
+    border_length = int(border * tf0 + 0.5)
+    blurred_segments = []
+    for segment in f0_mel_segments:
+        if segment.shape[0] > 0:
+            adjusted_border_length = min(border_length, segment.shape[0] // 5)
+            if adjusted_border_length > 0:
+                segment[1:adjusted_border_length + 1] = segment[adjusted_border_length + 1]
+                segment[-adjusted_border_length:] = segment[-adjusted_border_length - 1]
+                segment[1:] = gaussian_filter1d(segment[1:], tf0 * radius)
+            else:
+                segment[1:] = segment[segment.shape[0] // 2]
+            blurred_segments.append(segment)
+    return np.concatenate(blurred_segments)[1:]
+
+def pitch_blur(f0, tf0, border = 1 / 20, radius=1 / 20):
+    f0[np.where(f0 < 0.001)] = 0
+    f0_mel = np.log(1 + f0 / 700)
+    f0_mel_blurred = pitch_blur_mel(f0_mel, tf0, border, radius)
+    f0_blurred = (np.exp(f0_mel_blurred) - 1) * 700
+    f0_blurred[np.where(f0 < 0.001)] = 0
+    return f0_blurred
