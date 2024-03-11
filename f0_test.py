@@ -1,13 +1,17 @@
 from f0_magic import *
 from infer.lib.audio import pitch_blur
+import json
 
 model = PitchContourClassifier()
 model_path = "model_bak.pt"
 model.load_state_dict(torch.load(model_path)) 
 print(f"Model loaded from '{model_path:s}'")
 
-audio_file = ""
-index_file = ""
+with open('f0_test_config.json', 'r') as openfile:
+    data = json.load(openfile)
+    audio_file = data["audio_file"]
+    index_file = data["index_file"]
+
 input_file = os.path.splitext(audio_file)[0] + ".npy"
 if not os.path.isfile(input_file):
     np.save(input_file, compute_f0_inference(audio_file, index_file=index_file))
