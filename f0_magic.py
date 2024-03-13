@@ -252,8 +252,8 @@ def prepare_data():
                 os.remove(filename)
 
 
-segment_size = 1783
-multiplicity_target = 140
+segment_size = 1782
+multiplicity_target = 40
 multiplicity_others = 40
 
 def pitch_shift_mel(contour, semitones):
@@ -272,9 +272,8 @@ def pitch_invert_mel(contour, note):
     return contour
 
 
-def add_noise(contour, amp=1, scale=1):
+def add_noise(contour, amp=5, scale=1):
     zeros = contour < eps
-    amp = 5
     length = int(contour.shape[0] / scale) + 1
     noise = np.random.normal(0, amp, length)
     if len(noise) != len(contour):
@@ -348,7 +347,7 @@ def load_data():
                 start = random.randint(0, contour.shape[0] - segment_size)
                 if np.sum(contour[start:start + segment_size] > eps) > segment_size * 0.5:
                     target_data.append(torch.tensor(contour[start:start + segment_size], dtype=torch.float32))
-                    if random.uniform(0, 1) < 0.1:
+                    if random.uniform(0, 1) < 1:
                         others_data.append(torch.tensor(add_noise(contour[start:start + segment_size]), dtype=torch.float32))
 #                    others_data.append(torch.tensor(pitch_blur_mel(contour[start:start + segment_size], frames_per_sec), dtype=torch.float32))
 #                    others_data.append(torch.tensor(change_vibrato(contour[start:start + segment_size], 2), dtype=torch.float32))
@@ -410,14 +409,14 @@ def load_data():
 
 
 #channels = [3, 7, 7, 11, 11]
-channels = [64, 128, 256, 512, 256, 256]
+channels = [32, 64, 128, 256, 128, 128]
 class PitchContourClassifier(nn.Module):
     def __init__(self):
         super(PitchContourClassifier, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=1, out_channels=channels[0], kernel_size=10)
-        self.pool1 = nn.LPPool1d(norm_type=2, kernel_size=5) 
-        self.conv2 = nn.Conv1d(in_channels=channels[0], out_channels=channels[1], kernel_size=8)
-        self.pool2 = nn.LPPool1d(norm_type=2, kernel_size=4) 
+        self.conv1 = nn.Conv1d(in_channels=1, out_channels=channels[0], kernel_size=8)
+        self.pool1 = nn.LPPool1d(norm_type=2, kernel_size=4) 
+        self.conv2 = nn.Conv1d(in_channels=channels[0], out_channels=channels[1], kernel_size=10)
+        self.pool2 = nn.LPPool1d(norm_type=2, kernel_size=5) 
         self.conv3 = nn.Conv1d(in_channels=channels[1], out_channels=channels[2], kernel_size=8)
         self.pool3 = nn.LPPool1d(norm_type=2, kernel_size=4) 
         self.conv4 = nn.Conv1d(in_channels=channels[2], out_channels=channels[3], kernel_size=6)
@@ -440,32 +439,39 @@ class PitchContourClassifier(nn.Module):
 
 
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data, include_fakes=False):
-    model = PitchContourClassifier()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = PitchContourClassifier().to(device)
+    lr = 1e-6
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    epoch = 0
 
     MODEL_FILE = name + ".pt"
+    CHECKPOINT_FILE = name + " checkpoint.pt"
     TMP_FILE = name + "_tmp.pt"
     BAK_FILE = name + "_bak.pt"
 #    FAKE_DATA_FILE = name + "_fakes.npy"
     if os.path.isfile(TMP_FILE):
-        if not os.path.isfile(MODEL_FILE):
-            os.rename(TMP_FILE, MODEL_FILE)
+        if not os.path.isfile(CHECKPOINT_FILE):
+            os.rename(TMP_FILE, CHECKPOINT_FILE)
         else:
             os.remove(TMP_FILE)
     try:
-        if os.path.isfile(MODEL_FILE):
-            model.load_state_dict(torch.load(MODEL_FILE)) 
-            print(f"Model loaded from '{MODEL_FILE:s}'")
+        if os.path.isfile(CHECKPOINT_FILE):
+            checkpoint = torch.load(CHECKPOINT_FILE)
+            epoch = checkpoint['epoch']
+            model.load_state_dict(checkpoint['model'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            print(f"Data loaded from '{CHECKPOINT_FILE:s}'")
         else:
             print("Model initialized with random weights")
     except:
-        model = PitchContourClassifier()
+        epoch = 0
+        model = PitchContourClassifier().to(device)
+        optimizer = optim.Adam(model.parameters(), lr=lr)
         print("Model initialized with random weights")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
 
     criterion = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-7)
 
 #    lr_fakes = 0.01
 #    lr_epoch = 10
@@ -489,7 +495,6 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     test_dataset += torch.utils.data.TensorDataset(test_others_data, torch.full((len(test_others_data),), 0.0))
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=True)
-    epoch = 0
     best_test_loss = float("inf")
     while True:
 #        train_dataset = torch.utils.data.TensorDataset(target_data, torch.full((len(target_data),), 1.0))
@@ -560,22 +565,32 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 #                fakes[i] = others_data_npy[random.randint(0, len(others_data_npy) - 1)]
         # Print epoch statistics
         if epoch % 1 == 0:
-            print(f"Train Loss: {train_loss:.6f} Test Loss: {test_loss:.6f}")# Gen Similarity: {fakes_similarity:.4f}") 
-        torch.save(model.state_dict(), TMP_FILE) 
-        if os.path.isfile(MODEL_FILE):
+            print(f"Epoch: {epoch:d} Train Loss: {train_loss:.6f} Test Loss: {test_loss:.6f}")# Gen Similarity: {fakes_similarity:.4f}") 
+            checkpoint = { 
+                'epoch': epoch,
+                'model': model.state_dict(),
+                'optimizer': optimizer.state_dict()}
             while True:
                 try:
-                    os.remove(MODEL_FILE)
+                    torch.save(model.state_dict(), MODEL_FILE) 
                     break
                 except:
                     pass
-        os.rename(TMP_FILE, MODEL_FILE)
-        try:
-            #            np.save(FAKE_DATA_FILE, fakes)
-            pass
-        except:
-            pass
-        print(f"Model saved.")
+            torch.save(checkpoint, TMP_FILE)
+            if os.path.isfile(CHECKPOINT_FILE):
+                while True:
+                    try:
+                        os.remove(CHECKPOINT_FILE)
+                        break
+                    except:
+                        pass
+            os.rename(TMP_FILE, CHECKPOINT_FILE)
+            try:
+                #            np.save(FAKE_DATA_FILE, fakes)
+                pass
+            except:
+                pass
+            print(f"Data saved.")
         if test_loss < best_test_loss:
             best_test_loss = test_loss
             while True:
@@ -619,6 +634,7 @@ def modify_contour(model, original_contour, threshold=0.65):
             if np.sum(original_contour[cur:cur + segment_size] > eps) > 0:
                 modified_contour = original_contour_tensor[cur:cur + segment_size] + changes[cur:cur + segment_size]
                 current_output = model(modified_contour.unsqueeze(0).unsqueeze(0)) 
+                #todo: use batch
                 if current_output > 0:
                     loss = 1 - (current_output ** norm)
                 else:
