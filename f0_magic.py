@@ -625,28 +625,36 @@ def modify_contour(model, original_contour, threshold=0.65):
         epoch += 1
 #    for epoch in range(epoch_count):
         start = random.randint(1, segment_size)
+        modified_contours = []
+        cur = start
+        while cur + segment_size < len(changes):
+            if np.sum(original_contour[cur:cur + segment_size] > eps) > 0:
+                modified_contours.append((original_contour_tensor[cur:cur + segment_size] + changes[cur:cur + segment_size]).unsqueeze(0))
+            cur += segment_size
+        optimizer.zero_grad()
+        outputs = model(torch.stack(modified_contours)).view(-1)
         cur = start
         sum_output = 0
         segment_count = 0
-        optimizer.zero_grad()
         norm = 0.5
+        index = 0
+        loss = 0
         while cur + segment_size < len(changes):
             if np.sum(original_contour[cur:cur + segment_size] > eps) > 0:
-                modified_contour = original_contour_tensor[cur:cur + segment_size] + changes[cur:cur + segment_size]
-                current_output = model(modified_contour.unsqueeze(0).unsqueeze(0)) 
-                #todo: use batch
+                current_output = outputs[index]
+                index += 1
                 if current_output > 0:
-                    loss = 1 - (current_output ** norm)
+                    loss += 1 - (current_output ** norm)
                 else:
-                    loss = 1 - current_output
-                loss.backward()
-                sum_output += (current_output ** norm).squeeze(0).squeeze(0)
+                    loss += 1 - current_output
+                sum_output += current_output ** norm
                 segment_count += 1
             cur += segment_size
+        loss.backward()
         mse_loss = F.mse_loss(changes[1:], changes[:-1])
         l1_loss = torch.mean(torch.abs(changes))
-        loss = ((0 * l1_loss + 1 * mse_loss) * 1e-4 * segment_count)
-        loss.backward()
+#        loss = ((0 * l1_loss + 1 * mse_loss) * 1e-4 * segment_count)
+#        loss.backward()
         if segment_count > 0: 
             output_current = (sum_output / segment_count) ** (1 / norm)
         else:

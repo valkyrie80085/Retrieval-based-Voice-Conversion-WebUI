@@ -2,6 +2,8 @@ from f0_magic import *
 from infer.lib.audio import pitch_blur
 import json
 
+random.seed(42)
+
 model = PitchContourClassifier()
 model_path = "model_bak.pt"
 model.load_state_dict(torch.load(model_path)) 
@@ -26,7 +28,7 @@ input_contour = 1127 * np.log(1 + input_contour / 700)
 #input_contour = resize_with_zeros(input_contour, length)
 #input_contour = pitch_invert_mel(input_contour, "Ab4") 
 input_contour = pitch_shift_mel(input_contour, 6)
-modified_contour = modify_contour(model, input_contour, threshold=0.65)
+modified_contour = modify_contour(model, input_contour, threshold=0.99)
 #modified_contour = pitch_shift_mel(modified_contour, 0)
 
 modified_contour = (np.exp(modified_contour / 1127) - 1) * 700
