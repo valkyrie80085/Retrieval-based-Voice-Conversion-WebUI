@@ -36,7 +36,9 @@ def visualize_contour(contour):
     plt.show()
 
 
-frames_per_sec = 160
+sr = 16000
+window_length = 160
+frames_per_sec = sr // window_length
 def resize_with_zeros(contour, target_len):
     a = contour.copy()
     a[a < eps] = np.nan
@@ -104,7 +106,7 @@ def compute_f0_inference(path, index_file=""):
     print("computing f0 for: " + path)
     x = load_audio(path, 44100)
     x = librosa.resample(
-        x, orig_sr=44100, target_sr=16000
+        x, orig_sr=44100, target_sr=sr
     )
 
     global model_rmvpe
@@ -155,7 +157,7 @@ def compute_f0_inference(path, index_file=""):
 
     f0_mel = 1127 * np.log(1 + f0 / 700)
 
-    target_len = x.shape[0] // frames_per_sec
+    target_len = x.shape[0] // window_length
     f0_mel = resize_with_zeros(f0_mel, target_len)
     if index_file != "":
         f0_mel = trim_f0(f0_mel, x, index_file)
@@ -165,11 +167,11 @@ def compute_f0_inference(path, index_file=""):
 
 
 model_rmvpe = None
-def compute_f0(path, index_file=""):
+def compute_f0(path):
     print("computing f0 for: " + path)
     x = load_audio(path, 44100)
     x = librosa.resample(
-        x, orig_sr=44100, target_sr=16000
+        x, orig_sr=44100, target_sr=sr
     )
 
     global model_rmvpe
@@ -220,10 +222,8 @@ def compute_f0(path, index_file=""):
 
     f0_mel = 1127 * np.log(1 + f0 / 700)
 
-    target_len = x.shape[0] // frames_per_sec
+    target_len = x.shape[0] // window_length
     f0_mel = resize_with_zeros(f0_mel, target_len)
-    if index_file != "":
-        f0_mel = trim_f0(f0_mel, x, index_file)
     return f0_mel
 
 
@@ -253,7 +253,7 @@ def prepare_data():
 
 
 segment_size = 1782
-multiplicity_target = 40
+multiplicity_target = 200
 multiplicity_others = 40
 
 def pitch_shift_mel(contour, semitones):
@@ -348,7 +348,7 @@ def load_data():
                 if np.sum(contour[start:start + segment_size] > eps) > segment_size * 0.5:
                     target_data.append(torch.tensor(contour[start:start + segment_size], dtype=torch.float32))
                     if random.uniform(0, 1) < 1:
-                        others_data.append(torch.tensor(add_noise(contour[start:start + segment_size]), dtype=torch.float32))
+                        others_data.append(torch.tensor(add_noise(contour[start:start + segment_size], scale=random.uniform(1, 3)), dtype=torch.float32))
 #                    others_data.append(torch.tensor(pitch_blur_mel(contour[start:start + segment_size], frames_per_sec), dtype=torch.float32))
 #                    others_data.append(torch.tensor(change_vibrato(contour[start:start + segment_size], 2), dtype=torch.float32))
 #                    others_data.append(torch.tensor(modify_ends(contour[start:start + segment_size]), dtype=torch.float32))
@@ -409,7 +409,7 @@ def load_data():
 
 
 #channels = [3, 7, 7, 11, 11]
-channels = [32, 64, 128, 256, 128, 128]
+channels = [64, 128, 256, 512, 256, 256]
 class PitchContourClassifier(nn.Module):
     def __init__(self):
         super(PitchContourClassifier, self).__init__()
@@ -469,7 +469,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         model = PitchContourClassifier().to(device)
         optimizer = optim.Adam(model.parameters(), lr=lr)
         print("Model initialized with random weights")
-
+#    model.load_state_dict(torch.load(MODEL_FILE))
 
     criterion = nn.BCELoss()
 
@@ -609,7 +609,7 @@ def modify_contour(model, original_contour, threshold=0.65):
     changes = torch.zeros(len(original_contour), dtype=torch.float32, device=device)
     changes.requires_grad_(True)
 
-    optimizer = optim.Adam([changes], lr=0.1, eps=1e-6) 
+    optimizer = optim.Adam([changes], lr=0.1) 
 #    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.9999)
 #    epoch_count = 10000
 
