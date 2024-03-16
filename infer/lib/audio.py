@@ -147,7 +147,7 @@ def extract_features_new(audio_original, audio_shifted, model, version, device, 
         mask = mask.float()
     return feats_shifted * mask + feats_original * (1 - mask)
 
-def pitch_blur_mel(f0_mel, tf0, border = 1 / 10, radius=1 / 20):
+def pitch_blur_mel(f0_mel, tf0, border = 1 / 6.25, radius=1 / 12.5):
     from scipy.ndimage import gaussian_filter1d
     f0_mel_pad = np.concatenate(([0], f0_mel))
     f0_mel_segments = np.split(f0_mel_pad, np.where(f0_mel_pad < 0.001)[0])
@@ -165,7 +165,7 @@ def pitch_blur_mel(f0_mel, tf0, border = 1 / 10, radius=1 / 20):
             blurred_segments.append(segment)
     return np.concatenate(blurred_segments)[1:]
 
-def pitch_blur(f0, tf0, border = 1 / 20, radius=1 / 20):
+def pitch_blur(f0, tf0, border = 1 / 6.25, radius=1 / 12.5):
     f0[np.where(f0 < 0.001)] = 0
     f0_mel = np.log(1 + f0 / 700)
     f0_mel_blurred = pitch_blur_mel(f0_mel, tf0, border, radius)
