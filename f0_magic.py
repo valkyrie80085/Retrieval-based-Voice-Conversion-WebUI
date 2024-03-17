@@ -253,7 +253,7 @@ def prepare_data():
 
 
 segment_size = 1782
-multiplicity_target = 200
+multiplicity_target = 40
 multiplicity_others = 40
 
 def pitch_shift_mel(contour, semitones):
@@ -348,7 +348,7 @@ def load_data():
                 if np.sum(contour[start:start + segment_size] > eps) > segment_size * 0.5:
                     target_data.append(torch.tensor(contour[start:start + segment_size], dtype=torch.float32))
                     if random.uniform(0, 1) < 1:
-                        others_data.append(torch.tensor(add_noise(contour[start:start + segment_size], scale=random.uniform(1, 3)), dtype=torch.float32))
+                        others_data.append(torch.tensor(add_noise(contour[start:start + segment_size]), dtype=torch.float32))
 #                    others_data.append(torch.tensor(pitch_blur_mel(contour[start:start + segment_size], frames_per_sec), dtype=torch.float32))
 #                    others_data.append(torch.tensor(change_vibrato(contour[start:start + segment_size], 2), dtype=torch.float32))
 #                    others_data.append(torch.tensor(modify_ends(contour[start:start + segment_size]), dtype=torch.float32))
@@ -441,7 +441,7 @@ class PitchContourClassifier(nn.Module):
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data, include_fakes=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PitchContourClassifier().to(device)
-    lr = 1e-6
+    lr = 1e-7
     optimizer = optim.Adam(model.parameters(), lr=lr)
     epoch = 0
 
@@ -469,7 +469,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         model = PitchContourClassifier().to(device)
         optimizer = optim.Adam(model.parameters(), lr=lr)
         print("Model initialized with random weights")
-#    model.load_state_dict(torch.load(MODEL_FILE))
+    model.load_state_dict(torch.load(MODEL_FILE))
 
     criterion = nn.BCELoss()
 
@@ -625,11 +625,13 @@ def modify_contour(model, original_contour, threshold=0.65):
         epoch += 1
 #    for epoch in range(epoch_count):
         start = random.randint(1, segment_size)
+        changed = original_contour_tensor + changes
+        changed[original_contour_tensor < eps] = 0
         modified_contours = []
         cur = start
         while cur + segment_size < len(changes):
-            if np.sum(original_contour[cur:cur + segment_size] > eps) > 0:
-                modified_contours.append((original_contour_tensor[cur:cur + segment_size] + changes[cur:cur + segment_size]).unsqueeze(0))
+            if torch.sum(original_contour_tensor[cur:cur + segment_size] > eps) > 0:
+                modified_contours.append((changed[cur:cur + segment_size]).unsqueeze(0))
             cur += segment_size
         optimizer.zero_grad()
         outputs = model(torch.stack(modified_contours)).view(-1)
