@@ -409,7 +409,7 @@ def load_data():
 
 
 #channels = [3, 7, 7, 11, 11]
-channels = [64, 128, 256, 512, 256, 256]
+channels = [128, 256, 512, 1024, 512, 512]
 class PitchContourClassifier(nn.Module):
     def __init__(self):
         super(PitchContourClassifier, self).__init__()
@@ -441,7 +441,7 @@ class PitchContourClassifier(nn.Module):
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data, include_fakes=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PitchContourClassifier().to(device)
-    lr = 1e-7
+    lr = 1e-6
     optimizer = optim.Adam(model.parameters(), lr=lr)
     epoch = 0
 
@@ -469,7 +469,6 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         model = PitchContourClassifier().to(device)
         optimizer = optim.Adam(model.parameters(), lr=lr)
         print("Model initialized with random weights")
-    model.load_state_dict(torch.load(MODEL_FILE))
 
     criterion = nn.BCELoss()
 
@@ -626,7 +625,7 @@ def modify_contour(model, original_contour, threshold=0.65):
 #    for epoch in range(epoch_count):
         start = random.randint(1, segment_size)
         changed = original_contour_tensor + changes
-        changed[original_contour_tensor < eps] = 0
+#        changed[original_contour_tensor < eps] = 0
         modified_contours = []
         cur = start
         while cur + segment_size < len(changes):
