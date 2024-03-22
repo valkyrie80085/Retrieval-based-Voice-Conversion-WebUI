@@ -351,7 +351,7 @@ def load_data():
                 if np.sum(contour[start:start + segment_size] > eps) > segment_size * min_ratio:
                     target_data.append(torch.tensor(contour[start:start + segment_size], dtype=torch.float32))
                     if random.uniform(0, 1) < noise_rate:
-                        others_data.append(torch.tensor(add_noise(contour[start:start + segment_size], amp=5), dtype=torch.float32))
+                        others_data.append(torch.tensor(add_noise(contour[start:start + segment_size]), dtype=torch.float32))
 #                    others_data.append(torch.tensor(pitch_blur_mel(contour[start:start + segment_size], frames_per_sec), dtype=torch.float32))
 #                    others_data.append(torch.tensor(change_vibrato(contour[start:start + segment_size], 5), dtype=torch.float32))
 #                    others_data.append(torch.tensor(modify_ends(contour[start:start + segment_size]), dtype=torch.float32))
@@ -413,7 +413,7 @@ def load_data():
 
 
 #channels = [3, 7, 7, 11, 11]
-channels = [64, 128, 256, 512, 512, 256]
+channels = [64, 128, 256, 512, 256, 256]
 class PitchContourClassifier(nn.Module):
     def __init__(self):
         super(PitchContourClassifier, self).__init__()
