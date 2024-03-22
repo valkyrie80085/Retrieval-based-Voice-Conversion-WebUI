@@ -253,8 +253,6 @@ def prepare_data():
 
 
 segment_size = 1782
-multiplicity_target = 40
-multiplicity_others = 40
 
 def pitch_shift_mel(contour, semitones):
     contour = (np.exp(contour / 1127) - 1) * 700
@@ -324,6 +322,11 @@ def modify_ends(contour):
 
 
 def load_data():
+    multiplicity_target = 40
+    multiplicity_others = 40
+    min_ratio = 0.25
+    noise_rate = 1.0
+
     prepare_data()
     train_target_data = []
     train_others_data = []
@@ -345,61 +348,62 @@ def load_data():
                 contour = np.pad(contour, (0, segment_size - contour.shape[0]))
             for i in range(int(multiplicity_target * (contour.shape[0] - segment_size) / segment_size) + 1):
                 start = random.randint(0, contour.shape[0] - segment_size)
-                if np.sum(contour[start:start + segment_size] > eps) > segment_size * 0.5:
+                if np.sum(contour[start:start + segment_size] > eps) > segment_size * min_ratio:
                     target_data.append(torch.tensor(contour[start:start + segment_size], dtype=torch.float32))
-                    if random.uniform(0, 1) < 1:
-                        others_data.append(torch.tensor(add_noise(contour[start:start + segment_size]), dtype=torch.float32))
+                    if random.uniform(0, 1) < noise_rate:
+                        others_data.append(torch.tensor(add_noise(contour[start:start + segment_size], amp=5), dtype=torch.float32))
 #                    others_data.append(torch.tensor(pitch_blur_mel(contour[start:start + segment_size], frames_per_sec), dtype=torch.float32))
-#                    others_data.append(torch.tensor(change_vibrato(contour[start:start + segment_size], 2), dtype=torch.float32))
+#                    others_data.append(torch.tensor(change_vibrato(contour[start:start + segment_size], 5), dtype=torch.float32))
 #                    others_data.append(torch.tensor(modify_ends(contour[start:start + segment_size]), dtype=torch.float32))
 
-    min_segment_size = int(segment_size * 0.8)
-    max_segment_size = int(segment_size * 1.25)
-    for filename in walk(OTHERS_PATH):
-        if filename.endswith(".npy"):
-            if filename in test_set:
-                target_data, others_data = test_target_data, test_others_data
-            else:
-                target_data, others_data = train_target_data, train_others_data
-            contour = np.load(filename)
-            to_val = random.uniform(0, 1) < 0.2
-            if contour.shape[0] < max_segment_size:
-                contour = np.pad(contour, (0, max_segment_size - contour.shape[0]))
-            for i in range(int(multiplicity_others * (contour.shape[0] - segment_size) / segment_size) + 1):
-                start = random.randint(0, contour.shape[0] - segment_size)
-                use_original = random.randint(0, 4) == 0
-                if use_original:
-                    actual_length = segment_size
+    if multiplicity_others > 0:
+        min_segment_size = int(segment_size * 0.8)
+        max_segment_size = int(segment_size * 1.25)
+        for filename in walk(OTHERS_PATH):
+            if filename.endswith(".npy"):
+                if filename in test_set:
+                    target_data, others_data = test_target_data, test_others_data
                 else:
-                    actual_length = random.randint(min_segment_size, max_segment_size)
-                    actual_length = min(actual_length, contour.shape[0])
-                start = random.randint(0, contour.shape[0] - actual_length)
-                contour_sliced = contour[start:start + actual_length].copy()
-                if actual_length != segment_size:
-                    contour_sliced = resize_with_zeros(contour_sliced, segment_size)
-                if np.sum(contour_sliced > eps) > segment_size * 0.5:
+                    target_data, others_data = train_target_data, train_others_data
+                contour = np.load(filename)
+                to_val = random.uniform(0, 1) < 0.2
+                if contour.shape[0] < max_segment_size:
+                    contour = np.pad(contour, (0, max_segment_size - contour.shape[0]))
+                for i in range(int(multiplicity_others * (contour.shape[0] - segment_size) / segment_size) + 1):
+                    start = random.randint(0, contour.shape[0] - segment_size)
+                    use_original = random.randint(0, 4) == 0
                     if use_original:
-                        shift_real = 0
+                        actual_length = segment_size
                     else:
-                        contour_sliced = change_vibrato(contour_sliced, random.uniform(0, 2))
-                        shift = random.uniform(0, 1)
-                        average = get_average(contour_sliced) / 1127
-                        LOW, HIGH = librosa.note_to_hz("Ab3"), librosa.note_to_hz("Bb5")
-                        LOW, HIGH = math.log(1 + LOW / 700), math.log(1 + HIGH / 700)
-                        average_goal = (HIGH - LOW) * shift + LOW
-                        average = (math.exp(average) - 1) * 700
-                        average_goal = (math.exp(average_goal) - 1) * 700
-                        shift_real = math.log(average_goal / average) / math.log(2) * 12
-                    contour_final = pitch_shift_mel(contour_sliced, shift_real)
-                    if False and random.uniform(0, 1) < 0.1:
-                        if random.randint(0, 4) == 0:
-                            amp = 5
-                            scale = 1
+                        actual_length = random.randint(min_segment_size, max_segment_size)
+                        actual_length = min(actual_length, contour.shape[0])
+                    start = random.randint(0, contour.shape[0] - actual_length)
+                    contour_sliced = contour[start:start + actual_length].copy()
+                    if actual_length != segment_size:
+                        contour_sliced = resize_with_zeros(contour_sliced, segment_size)
+                    if np.sum(contour_sliced > eps) > segment_size * min_ratio:
+                        if use_original:
+                            shift_real = 0
                         else:
-                            amp = random.uniform(5, 30)
-                            scale = random.uniform(1, 2 ** random.randint(0, 10))
-                        contour_final = add_noise(contour_final, amp=amp, scale=scale)
-                    others_data.append(torch.tensor(contour_final, dtype=torch.float32))
+                            contour_sliced = change_vibrato(contour_sliced, random.uniform(0, 2))
+                            shift = random.uniform(0, 1)
+                            average = get_average(contour_sliced) / 1127
+                            LOW, HIGH = librosa.note_to_hz("Ab3"), librosa.note_to_hz("Bb5")
+                            LOW, HIGH = math.log(1 + LOW / 700), math.log(1 + HIGH / 700)
+                            average_goal = (HIGH - LOW) * shift + LOW
+                            average = (math.exp(average) - 1) * 700
+                            average_goal = (math.exp(average_goal) - 1) * 700
+                            shift_real = math.log(average_goal / average) / math.log(2) * 12
+                        contour_final = pitch_shift_mel(contour_sliced, shift_real)
+                        if False and random.uniform(0, 1) < 0.1:
+                            if random.randint(0, 4) == 0:
+                                amp = 5
+                                scale = 1
+                            else:
+                                amp = random.uniform(5, 30)
+                                scale = random.uniform(1, 2 ** random.randint(0, 10))
+                            contour_final = add_noise(contour_final, amp=amp, scale=scale)
+                        others_data.append(torch.tensor(contour_final, dtype=torch.float32))
 
     print("Train target data count:", len(train_target_data))
     print("Train others data count:", len(train_others_data))
@@ -409,7 +413,7 @@ def load_data():
 
 
 #channels = [3, 7, 7, 11, 11]
-channels = [128, 256, 512, 1024, 512, 512]
+channels = [64, 128, 256, 512, 512, 256]
 class PitchContourClassifier(nn.Module):
     def __init__(self):
         super(PitchContourClassifier, self).__init__()
@@ -438,6 +442,7 @@ class PitchContourClassifier(nn.Module):
         return x
 
 
+USE_TEST_SET = True
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data, include_fakes=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PitchContourClassifier().to(device)
@@ -490,11 +495,16 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
     train_dataset = torch.utils.data.TensorDataset(train_target_data, torch.full((len(train_target_data),), 1.0))
     train_dataset += torch.utils.data.TensorDataset(train_others_data, torch.full((len(train_others_data),), 0.0))
-    test_dataset = torch.utils.data.TensorDataset(test_target_data, torch.full((len(test_target_data),), 1.0))
-    test_dataset += torch.utils.data.TensorDataset(test_others_data, torch.full((len(test_others_data),), 0.0))
+    if USE_TEST_SET:
+        test_dataset = torch.utils.data.TensorDataset(test_target_data, torch.full((len(test_target_data),), 1.0))
+        test_dataset += torch.utils.data.TensorDataset(test_others_data, torch.full((len(test_others_data),), 0.0))
+    else:
+        train_dataset = torch.utils.data.TensorDataset(test_target_data, torch.full((len(test_target_data),), 1.0))
+        train_dataset += torch.utils.data.TensorDataset(test_others_data, torch.full((len(test_others_data),), 0.0))
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=True)
-    best_test_loss = float("inf")
+    if USE_TEST_SET:
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=True)
+    best_loss = float("inf")
     while True:
 #        train_dataset = torch.utils.data.TensorDataset(target_data, torch.full((len(target_data),), 1.0))
 #        train_dataset += torch.utils.data.TensorDataset(others_data, torch.full((len(others_data),), 0.0))
@@ -518,18 +528,19 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             train_loss += loss.item()  
         train_loss /= len(train_loader)
 
-        test_loss = 0.0
-        for batch_idx, (data, labels) in enumerate(test_loader):
-            data, labels = data.to(device), labels.to(device)
+        if USE_TEST_SET:
+            test_loss = 0.0
+            for batch_idx, (data, labels) in enumerate(test_loader):
+                data, labels = data.to(device), labels.to(device)
 
-            optimizer.zero_grad()
-            outputs = model(data.unsqueeze(1))
-            loss = criterion(outputs, labels.unsqueeze(1))
-            loss.backward()
-            optimizer.step()
+                optimizer.zero_grad()
+                outputs = model(data.unsqueeze(1))
+                loss = criterion(outputs, labels.unsqueeze(1))
+                loss.backward()
+                optimizer.step()
 
-            test_loss += loss.item()  
-        test_loss /= len(test_loader)
+                test_loss += loss.item()  
+            test_loss /= len(test_loader)
 
 #        fakes_loader = torch.utils.data.DataLoader(fakes_dataset, batch_size=256, shuffle=True)
 #        fakes_similarity = 0
@@ -564,7 +575,13 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 #                fakes[i] = others_data_npy[random.randint(0, len(others_data_npy) - 1)]
         # Print epoch statistics
         if epoch % 1 == 0:
-            print(f"Epoch: {epoch:d} Train Loss: {train_loss:.6f} Test Loss: {test_loss:.6f}")# Gen Similarity: {fakes_similarity:.4f}") 
+            if USE_TEST_SET:
+                print(f"Epoch: {epoch:d} Train Loss: {train_loss:.6f} Test Loss: {test_loss:.6f}")# Gen Similarity: {fakes_similarity:.4f}") 
+            else:
+                print(f"Epoch: {epoch:d} Train Loss: {train_loss:.6f}")# Gen Similarity: {fakes_similarity:.4f}") 
+            if epoch > 250 and train_loss > 1.0:
+                print("Gradient seems to be exploding. Emergency stopping.")
+                break
             checkpoint = { 
                 'epoch': epoch,
                 'model': model.state_dict(),
@@ -590,8 +607,8 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             except:
                 pass
             print(f"Data saved.")
-        if test_loss < best_test_loss:
-            best_test_loss = test_loss
+        if (USE_TEST_SET and test_loss < best_loss) or ((not USE_TEST_SET) and train_loss < best_loss):
+            best_loss = test_loss if USE_TEST_SET else train_loss 
             while True:
                 try:
                     torch.save(model.state_dict(), BAK_FILE) 
@@ -641,7 +658,7 @@ def modify_contour(model, original_contour, threshold=0.65):
         index = 0
         loss = 0
         while cur + segment_size < len(changes):
-            if np.sum(original_contour[cur:cur + segment_size] > eps) > 0:
+            if torch.sum(original_contour_tensor[cur:cur + segment_size] > eps) > 0:
                 current_output = outputs[index]
                 index += 1
                 if current_output > 0:
@@ -652,8 +669,10 @@ def modify_contour(model, original_contour, threshold=0.65):
                 segment_count += 1
             cur += segment_size
         loss.backward()
-        mse_loss = F.mse_loss(changes[1:], changes[:-1])
-        l1_loss = torch.mean(torch.abs(changes))
+        changes_zeroed = changes.clone()
+        changes_zeroed[original_contour_tensor < eps] = 0
+        mse_loss = F.mse_loss(changes_zeroed[1:], changes_zeroed[:-1])
+        l1_loss = torch.mean(torch.abs(changes_zeroed))
 #        loss = ((0 * l1_loss + 1 * mse_loss) * 1e-4 * segment_count)
 #        loss.backward()
         if segment_count > 0: 
