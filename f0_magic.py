@@ -8,7 +8,7 @@ import os
 import librosa
 import ffmpeg
 
-from infer.lib.audio import load_audio, pitch_blur_mel, extract_features_simple
+from infer.lib.audio import load_audio, pitch_blur_mel, extract_features_simple, trim_sides_mel
 import torchcrepe
 import random
 
@@ -159,8 +159,12 @@ def compute_f0_inference(path, index_file=""):
 
     target_len = x.shape[0] // window_length
     f0_mel = resize_with_zeros(f0_mel, target_len)
+
     if index_file != "":
         f0_mel = trim_f0(f0_mel, x, index_file)
+
+    f0_mel = trim_sides_mel(f0_mel, frames_per_sec)
+
     f0 = (np.exp(f0_mel / 1127) - 1) * 700 
     f0 = np.pad(f0, (300, 300))
     return f0
@@ -600,7 +604,13 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                         break
                     except:
                         pass
-            os.rename(TMP_FILE, CHECKPOINT_FILE)
+            if os.path.isfile(CHECKPOINT_FILE):
+                while True:
+                    try:
+                        os.rename(TMP_FILE, CHECKPOINT_FILE)
+                        break
+                    except:
+                        pass
             try:
                 #            np.save(FAKE_DATA_FILE, fakes)
                 pass
@@ -673,7 +683,7 @@ def modify_contour(model, original_contour, threshold=0.65):
         changes_zeroed[original_contour_tensor < eps] = 0
         mse_loss = F.mse_loss(changes_zeroed[1:], changes_zeroed[:-1])
         l1_loss = torch.mean(torch.abs(changes_zeroed))
-#        loss = ((0 * l1_loss + 1 * mse_loss) * 1e-4 * segment_count)
+#        loss = ((1 * l1_loss + 0 * mse_loss) * 1e-3 * segment_count)
 #        loss.backward()
         if segment_count > 0: 
             output_current = (sum_output / segment_count) ** (1 / norm)
