@@ -25,16 +25,43 @@ from infer.modules.vc.utils import load_hubert
 config = Config()
 
 eps = 0.001
+mel_min = 1127 * math.log(1 + 50 / 700)
+mel_max = 1127 * math.log(1 + 1100 / 700)
 
-def visualize_contour(contour):
-    plt.figure(figsize=(10, 4))  # Adjust figure size as needed 
-    plt.plot(contour)
-    plt.xlabel("Time (samples)")
-    plt.ylabel("Pitch (Hz)")
-    plt.title("Pitch Contour")
-    plt.grid(True) 
-    plt.show()
+multiplicity_target = 80
+multiplicity_others = 80
+min_ratio = 0.5
+noise_rate = 1.0
 
+segment_size = 1723
+channels = [32, 64, 128, 256, 128, 128]
+kernel_size_conv = [7, 7, 7, 5]
+kernel_size_pool = [4, 4, 4, 3]
+fc_width = 4
+class PitchContourClassifier(nn.Module):
+    def __init__(self):
+        super(PitchContourClassifier, self).__init__()
+        self.convs = nn.ModuleList([])
+        self.pools = nn.ModuleList([])
+        for i in range(len(kernel_size_conv)):
+            self.convs.append(nn.Conv1d(in_channels=1 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
+            self.convs.append(nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
+            self.pools.append(nn.MaxPool1d(kernel_size=kernel_size_pool[i]))
+        self.fc1 = nn.Linear(channels[-3] * fc_width, channels[-2])
+        self.fc2 = nn.Linear(channels[-2], channels[-1])
+        self.fc3 = nn.Linear(channels[-1], 1)
+
+
+    def forward(self, x):
+        for i in range(len(kernel_size_conv)):
+            x = F.relu(self.convs[i * 2](x))
+            x = F.relu(self.convs[i * 2 + 1](x))
+            x = self.pools[i](x)
+        x = x.view(-1, channels[-3] * fc_width)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = torch.sigmoid(self.fc3(x))
+        return x
 
 sr = 16000
 window_length = 160
@@ -256,8 +283,6 @@ def prepare_data():
                 os.remove(filename)
 
 
-segment_size = 1782
-
 def pitch_shift_mel(contour, semitones):
     contour = (np.exp(contour / 1127) - 1) * 700
     contour *= 2 ** (semitones / 12)
@@ -324,13 +349,16 @@ def modify_ends(contour):
     modified_contour = np.concatenate(modified_segments)[1:]
     return modified_contour
 
+def preprocess(x):
+    mn = 559.4985610615364
+    std = 120.52172592468257
+    x_ret = x.clone()
+    x_ret = (x_ret - mn) / std
+#    x_ret[x < eps] = (2 * mel_min - mel_max - mn) / std
+    return x_ret
+
 
 def load_data():
-    multiplicity_target = 40
-    multiplicity_others = 40
-    min_ratio = 0.25
-    noise_rate = 1.0
-
     prepare_data()
     train_target_data = []
     train_others_data = []
@@ -353,10 +381,11 @@ def load_data():
             for i in range(int(multiplicity_target * (contour.shape[0] - segment_size) / segment_size) + 1):
                 start = random.randint(0, contour.shape[0] - segment_size)
                 if np.sum(contour[start:start + segment_size] > eps) > segment_size * min_ratio:
-                    target_data.append(torch.tensor(contour[start:start + segment_size], dtype=torch.float32))
+                    contour_final = contour[start:start + segment_size]
+                    target_data.append(torch.tensor(contour_final, dtype=torch.float32))
                     if random.uniform(0, 1) < noise_rate:
-                        others_data.append(torch.tensor(add_noise(contour[start:start + segment_size]), dtype=torch.float32))
-#                    others_data.append(torch.tensor(pitch_blur_mel(contour[start:start + segment_size], frames_per_sec), dtype=torch.float32))
+                        others_data.append(torch.tensor(add_noise(contour_final), dtype=torch.float32))
+#                    others_data.append(torch.tensor(pitch_blur_mel(contour[start:start + segment_size], frames_per_sec, border=0), dtype=torch.float32))
 #                    others_data.append(torch.tensor(change_vibrato(contour[start:start + segment_size], 5), dtype=torch.float32))
 #                    others_data.append(torch.tensor(modify_ends(contour[start:start + segment_size]), dtype=torch.float32))
 
@@ -370,7 +399,6 @@ def load_data():
                 else:
                     target_data, others_data = train_target_data, train_others_data
                 contour = np.load(filename)
-                to_val = random.uniform(0, 1) < 0.2
                 if contour.shape[0] < max_segment_size:
                     contour = np.pad(contour, (0, max_segment_size - contour.shape[0]))
                 for i in range(int(multiplicity_others * (contour.shape[0] - segment_size) / segment_size) + 1):
@@ -399,7 +427,7 @@ def load_data():
                             average_goal = (math.exp(average_goal) - 1) * 700
                             shift_real = math.log(average_goal / average) / math.log(2) * 12
                         contour_final = pitch_shift_mel(contour_sliced, shift_real)
-                        if False and random.uniform(0, 1) < 0.1:
+                        if random.uniform(0, 1) < 0.5:
                             if random.randint(0, 4) == 0:
                                 amp = 5
                                 scale = 1
@@ -416,36 +444,6 @@ def load_data():
     return map(torch.stack, (train_target_data, train_others_data, test_target_data, test_others_data))
 
 
-#channels = [3, 7, 7, 11, 11]
-channels = [64, 128, 256, 512, 256, 256]
-class PitchContourClassifier(nn.Module):
-    def __init__(self):
-        super(PitchContourClassifier, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=1, out_channels=channels[0], kernel_size=8)
-        self.pool1 = nn.LPPool1d(norm_type=2, kernel_size=4) 
-        self.conv2 = nn.Conv1d(in_channels=channels[0], out_channels=channels[1], kernel_size=10)
-        self.pool2 = nn.LPPool1d(norm_type=2, kernel_size=5) 
-        self.conv3 = nn.Conv1d(in_channels=channels[1], out_channels=channels[2], kernel_size=8)
-        self.pool3 = nn.LPPool1d(norm_type=2, kernel_size=4) 
-        self.conv4 = nn.Conv1d(in_channels=channels[2], out_channels=channels[3], kernel_size=6)
-        self.pool4 = nn.LPPool1d(norm_type=2, kernel_size=3)
-        self.fc1 = nn.Linear(channels[-3] * 4, channels[-2])
-        self.fc2 = nn.Linear(channels[-2], channels[-1])
-        self.fc3 = nn.Linear(channels[-1], 1)
-
-
-    def forward(self, x):
-        x = self.pool1(F.elu(self.conv1(x)))
-        x = self.pool2(F.elu(self.conv2(x)))
-        x = self.pool3(F.elu(self.conv3(x)))
-        x = self.pool4(F.elu(self.conv4(x)))
-        x = x.view(-1, channels[-3] * 4)
-        x = F.elu(self.fc1(x))
-        x = F.elu(self.fc2(x))
-        x = torch.sigmoid(self.fc3(x))
-        return x
-
-
 USE_TEST_SET = True
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data, include_fakes=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -457,8 +455,8 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     MODEL_FILE = name + ".pt"
     CHECKPOINT_FILE = name + " checkpoint.pt"
     TMP_FILE = name + "_tmp.pt"
-    BAK_FILE = name + "_bak.pt"
-#    FAKE_DATA_FILE = name + "_fakes.npy"
+    if include_fakes:
+        FAKE_DATA_FILE = name + "_fakes.npy"
     if os.path.isfile(TMP_FILE):
         if not os.path.isfile(CHECKPOINT_FILE):
             os.rename(TMP_FILE, CHECKPOINT_FILE)
@@ -481,41 +479,39 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
     criterion = nn.BCELoss()
 
-#    lr_fakes = 0.01
-#    lr_epoch = 10
-#    fake_count = len(others_data) // lr_epoch
-#    reset_prob = 1 / 1000 * lr_epoch
-#    others_data_npy = others_data.cpu().numpy()
-#    fakes_loaded = False
-#    if os.path.isfile(FAKE_DATA_FILE):
-#                fakes = np.load(FAKE_DATA_FILE)
-#        if len(fakes) == fake_count:
-            #            fakes_loaded = True
-#        else:
-#                        fake_count = len(fakes)
-#            fakes_loaded = True
-#    if not fakes_loaded:
-        #        fakes = np.array([others_data_npy[random.randint(0, len(others_data_npy) - 1)] for i in range(fake_count)])
+    if include_fakes:
+        lr_fakes = 0.1#lr * 1e3
+        lr_epoch = round(1e6 * lr)
+        fake_count = len(train_target_data) // lr_epoch
+        reset_prob = 1e-3 * lr_epoch
+        others_data_npy = train_others_data.cpu().numpy()
+        fakes_loaded = False
+        if os.path.isfile(FAKE_DATA_FILE):
+            fakes = np.load(FAKE_DATA_FILE)
+            if len(fakes) == fake_count:
+               fakes_loaded = True
+            else:
+               fakes_loaded = False
+        if not fakes_loaded:
+            fakes = np.array([others_data_npy[random.randint(0, len(others_data_npy) - 1)] for i in range(fake_count)])
 
-    train_dataset = torch.utils.data.TensorDataset(train_target_data, torch.full((len(train_target_data),), 1.0))
-    train_dataset += torch.utils.data.TensorDataset(train_others_data, torch.full((len(train_others_data),), 0.0))
-    if USE_TEST_SET:
-        test_dataset = torch.utils.data.TensorDataset(test_target_data, torch.full((len(test_target_data),), 1.0))
-        test_dataset += torch.utils.data.TensorDataset(test_others_data, torch.full((len(test_others_data),), 0.0))
-    else:
-        train_dataset = torch.utils.data.TensorDataset(test_target_data, torch.full((len(test_target_data),), 1.0))
-        train_dataset += torch.utils.data.TensorDataset(test_others_data, torch.full((len(test_others_data),), 0.0))
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
-    if USE_TEST_SET:
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=True)
     best_loss = float("inf")
     while True:
-#        train_dataset = torch.utils.data.TensorDataset(target_data, torch.full((len(target_data),), 1.0))
-#        train_dataset += torch.utils.data.TensorDataset(others_data, torch.full((len(others_data),), 0.0))
-#        fakes_dataset = torch.utils.data.TensorDataset(torch.stack([torch.tensor(data, dtype=torch.float32) for data in fakes]), torch.full((fake_count,), 0.0))
-#        train_dataset += fakes_dataset
+        train_dataset = torch.utils.data.TensorDataset(train_target_data, torch.full((len(train_target_data),), 1.0))
+        train_dataset += torch.utils.data.TensorDataset(train_others_data, torch.full((len(train_others_data),), 0.0))
+        if USE_TEST_SET:
+            test_dataset = torch.utils.data.TensorDataset(test_target_data, torch.full((len(test_target_data),), 1.0))
+            test_dataset += torch.utils.data.TensorDataset(test_others_data, torch.full((len(test_others_data),), 0.0))
+        else:
+            train_dataset += torch.utils.data.TensorDataset(test_target_data, torch.full((len(test_target_data),), 1.0))
+            train_dataset += torch.utils.data.TensorDataset(test_others_data, torch.full((len(test_others_data),), 0.0))
+        if include_fakes:
+            fakes_dataset = torch.utils.data.TensorDataset(torch.stack([torch.tensor(data, dtype=torch.float32) for data in fakes]), torch.full((fake_count,), 0.0))
+            train_dataset += fakes_dataset
 
-#        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+        if USE_TEST_SET:
+            test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=True)
 
         epoch += 1
 
@@ -524,7 +520,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data, labels = data.to(device), labels.to(device)
 
             optimizer.zero_grad()
-            outputs = model(data.unsqueeze(1))
+            outputs = model(preprocess(data.unsqueeze(1)))
             loss = criterion(outputs, labels.unsqueeze(1))
             loss.backward()
             optimizer.step()
@@ -538,7 +534,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 data, labels = data.to(device), labels.to(device)
 
                 optimizer.zero_grad()
-                outputs = model(data.unsqueeze(1))
+                outputs = model(preprocess(data.unsqueeze(1)))
                 loss = criterion(outputs, labels.unsqueeze(1))
                 loss.backward()
                 optimizer.step()
@@ -546,32 +542,25 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 test_loss += loss.item()  
             test_loss /= len(test_loader)
 
-#        fakes_loader = torch.utils.data.DataLoader(fakes_dataset, batch_size=256, shuffle=True)
-#        fakes_similarity = 0
-#        if False:
-#            fakes_new = torch.empty((0, segment_size), dtype=torch.float32).to(device)
-#            for batch_idx, (data, labels) in enumerate(fakes_loader):
-#                data, labels = data.to(device), labels.to(device)
-#                data.requires_grad_(True)
-#                fakes_optimizer = optim.Adam([data], lr=lr_fakes) 
-#                for i in range(lr_epoch):
-#                    fakes_optimizer.zero_grad()
-#                    fakes_outputs = model(data.unsqueeze(1))
-#                    fakes_loss = torch.sum(1 - fakes_outputs)
-#                    current_similarity = torch.sum(fakes_outputs)
-#                    fakes_loss.backward()
-#                    fakes_optimizer.step()
-#                fakes_similarity += current_similarity
-#                fakes_new = torch.cat((fakes_new, data.detach()))
-#            fakes = fakes_new.cpu().numpy()
-#        else:
-#            for batch_idx, (data, labels) in enumerate(fakes_loader):
-#                data, labels = data.to(device), labels.to(device)
-#                fakes_outputs = model(data.unsqueeze(1))
-#                current_similarity = torch.sum(fakes_outputs)
-#                fakes_similarity += current_similarity
-#            fakes_similarity += current_similarity
-#        fakes_similarity /= fake_count
+        if include_fakes:
+            fakes_loader = torch.utils.data.DataLoader(fakes_dataset, batch_size=256, shuffle=True)
+            fakes_similarity = 0
+            fakes_new = torch.empty((0, segment_size), dtype=torch.float32).to(device)
+            for batch_idx, (data, labels) in enumerate(fakes_loader):
+                data, labels = data.to(device), labels.to(device)
+                data.requires_grad_(True)
+                fakes_optimizer = optim.Adam([data], lr=lr_fakes) 
+                for i in range(lr_epoch):
+                    fakes_optimizer.zero_grad()
+                    fakes_outputs = model(preprocess(data.unsqueeze(1)))
+                    fakes_loss = torch.sum(1 - fakes_outputs)
+                    current_similarity = torch.sum(fakes_outputs)
+                    fakes_loss.backward()
+                    fakes_optimizer.step()
+                fakes_similarity += current_similarity
+                fakes_new = torch.cat((fakes_new, data.detach()))
+            fakes = fakes_new.cpu().numpy()
+            fakes_similarity /= fake_count
 
 
 #        for i in range(fake_count):
@@ -583,9 +572,8 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 print(f"Epoch: {epoch:d} Train Loss: {train_loss:.6f} Test Loss: {test_loss:.6f}")# Gen Similarity: {fakes_similarity:.4f}") 
             else:
                 print(f"Epoch: {epoch:d} Train Loss: {train_loss:.6f}")# Gen Similarity: {fakes_similarity:.4f}") 
-            if epoch > 250 and train_loss > 1.0:
-                print("Gradient seems to be exploding. Emergency stopping.")
-                break
+            if include_fakes:
+                print(f"Fakes Similarity: {fakes_similarity:.6f}")
             checkpoint = { 
                 'epoch': epoch,
                 'model': model.state_dict(),
@@ -604,13 +592,12 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                         break
                     except:
                         pass
-            if os.path.isfile(CHECKPOINT_FILE):
-                while True:
-                    try:
-                        os.rename(TMP_FILE, CHECKPOINT_FILE)
-                        break
-                    except:
-                        pass
+            while True:
+                try:
+                    os.rename(TMP_FILE, CHECKPOINT_FILE)
+                    break
+                except:
+                    pass
             try:
                 #            np.save(FAKE_DATA_FILE, fakes)
                 pass
@@ -619,6 +606,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             print(f"Data saved.")
         if (USE_TEST_SET and test_loss < best_loss) or ((not USE_TEST_SET) and train_loss < best_loss):
             best_loss = test_loss if USE_TEST_SET else train_loss 
+            BAK_FILE = name + " " + str(epoch // 50 * 50) + ".pt"
             while True:
                 try:
                     torch.save(model.state_dict(), BAK_FILE) 
@@ -635,7 +623,7 @@ def modify_contour(model, original_contour, threshold=0.65):
     changes = torch.zeros(len(original_contour), dtype=torch.float32, device=device)
     changes.requires_grad_(True)
 
-    optimizer = optim.Adam([changes], lr=0.1) 
+    optimizer = optim.Adam([changes], lr=0.01) 
 #    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.9999)
 #    epoch_count = 10000
 
@@ -660,7 +648,7 @@ def modify_contour(model, original_contour, threshold=0.65):
                 modified_contours.append((changed[cur:cur + segment_size]).unsqueeze(0))
             cur += segment_size
         optimizer.zero_grad()
-        outputs = model(torch.stack(modified_contours)).view(-1)
+        outputs = model(preprocess(torch.stack(modified_contours))).view(-1)
         cur = start
         sum_output = 0
         segment_count = 0
