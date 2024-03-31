@@ -28,40 +28,55 @@ eps = 0.001
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 80
+multiplicity_target = 200
 multiplicity_others = 80
 min_ratio = 0.5
 noise_rate = 1.0
 
-segment_size = 1723
-channels = [32, 64, 128, 256, 128, 128]
-kernel_size_conv = [7, 7, 7, 5]
-kernel_size_pool = [4, 4, 4, 3]
-fc_width = 4
+segment_size = 1615
+channels = [32, 64, 128, 256, 512, 256, 256]
+kernel_size_conv = [5, 5, 5, 5, 3]
+kernel_size_pool = [3, 3, 3, 3, 2]
+fc_width = 5
 class PitchContourClassifier(nn.Module):
     def __init__(self):
         super(PitchContourClassifier, self).__init__()
         self.convs = nn.ModuleList([])
         self.pools = nn.ModuleList([])
+        self.batchnorms = nn.ModuleList([])
         for i in range(len(kernel_size_conv)):
             self.convs.append(nn.Conv1d(in_channels=1 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
+            self.batchnorms.append(nn.BatchNorm1d(num_features=channels[i]))
             self.convs.append(nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
+            self.batchnorms.append(nn.BatchNorm1d(num_features=channels[i]))
             self.pools.append(nn.MaxPool1d(kernel_size=kernel_size_pool[i]))
         self.fc1 = nn.Linear(channels[-3] * fc_width, channels[-2])
+        self.batchnorms.append(nn.BatchNorm1d(num_features=channels[-2]))
         self.fc2 = nn.Linear(channels[-2], channels[-1])
+        self.batchnorms.append(nn.BatchNorm1d(num_features=channels[-1]))
         self.fc3 = nn.Linear(channels[-1], 1)
 
 
     def forward(self, x):
         for i in range(len(kernel_size_conv)):
-            x = F.relu(self.convs[i * 2](x))
-            x = F.relu(self.convs[i * 2 + 1](x))
+            x = F.relu(self.batchnorms[i * 2](self.convs[i * 2](x)))
+            x = F.relu(self.batchnorms[i * 2 + 1](self.convs[i * 2 + 1](x)))
             x = self.pools[i](x)
         x = x.view(-1, channels[-3] * fc_width)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
+        x = F.relu(self.batchnorms[-2](self.fc1(x)))
+        x = F.relu(self.batchnorms[-1](self.fc2(x)))
         x = torch.sigmoid(self.fc3(x))
         return x
+
+
+def preprocess(x):
+    mn = 0#559.4985610615364
+    std = 120.52172592468257
+    x_ret = x.clone()
+    x_ret = (x_ret - mn) / std
+#    x_ret[x < eps] = (2 * mel_min - mel_max - mn) / std
+    return x_ret
+
 
 sr = 16000
 window_length = 160
@@ -349,14 +364,6 @@ def modify_ends(contour):
     modified_contour = np.concatenate(modified_segments)[1:]
     return modified_contour
 
-def preprocess(x):
-    mn = 559.4985610615364
-    std = 120.52172592468257
-    x_ret = x.clone()
-    x_ret = (x_ret - mn) / std
-#    x_ret[x < eps] = (2 * mel_min - mel_max - mn) / std
-    return x_ret
-
 
 def load_data():
     prepare_data()
@@ -383,8 +390,8 @@ def load_data():
                 if np.sum(contour[start:start + segment_size] > eps) > segment_size * min_ratio:
                     contour_final = contour[start:start + segment_size]
                     target_data.append(torch.tensor(contour_final, dtype=torch.float32))
-                    if random.uniform(0, 1) < noise_rate:
-                        others_data.append(torch.tensor(add_noise(contour_final), dtype=torch.float32))
+                    for j in range(10):
+                        others_data.append(torch.tensor(add_noise(contour_final, amp=random.uniform(5, 15), scale=random.uniform(1, 3)), dtype=torch.float32))
 #                    others_data.append(torch.tensor(pitch_blur_mel(contour[start:start + segment_size], frames_per_sec, border=0), dtype=torch.float32))
 #                    others_data.append(torch.tensor(change_vibrato(contour[start:start + segment_size], 5), dtype=torch.float32))
 #                    others_data.append(torch.tensor(modify_ends(contour[start:start + segment_size]), dtype=torch.float32))
@@ -448,7 +455,7 @@ USE_TEST_SET = True
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data, include_fakes=False):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PitchContourClassifier().to(device)
-    lr = 1e-6
+    lr = 1e-5
     optimizer = optim.Adam(model.parameters(), lr=lr)
     epoch = 0
 
@@ -494,6 +501,8 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                fakes_loaded = False
         if not fakes_loaded:
             fakes = np.array([others_data_npy[random.randint(0, len(others_data_npy) - 1)] for i in range(fake_count)])
+
+    model.train()
 
     best_loss = float("inf")
     while True:
@@ -626,6 +635,8 @@ def modify_contour(model, original_contour, threshold=0.65):
     optimizer = optim.Adam([changes], lr=0.01) 
 #    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.9999)
 #    epoch_count = 10000
+
+    model.eval()
 
     max_lives = 100
     best_output = None
