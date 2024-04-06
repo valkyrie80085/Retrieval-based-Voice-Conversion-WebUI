@@ -22,58 +22,38 @@ from scipy.signal import medfilt
 
 from configs.config import Config
 from infer.modules.vc.utils import load_hubert
+from f0_magic_gen import PitchContourGenerator, segment_size
+from f0_magic_disc import PitchContourDiscriminator 
+from f0_magic_disc import segment_size as segment_size_disc
+
 config = Config()
 
-eps = 0.001
+eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 200
-multiplicity_others = 80
+multiplicity_target = 40
+multiplicity_others = 40
 min_ratio = 0.5
-noise_rate = 1.0
+median_filter_size = 17
 
-segment_size = 1615
-channels = [32, 64, 128, 256, 512, 256, 256]
-kernel_size_conv = [5, 5, 5, 5, 3]
-kernel_size_pool = [3, 3, 3, 3, 2]
-fc_width = 5
-class PitchContourClassifier(nn.Module):
-    def __init__(self):
-        super(PitchContourClassifier, self).__init__()
-        self.convs = nn.ModuleList([])
-        self.pools = nn.ModuleList([])
-        self.batchnorms = nn.ModuleList([])
-        for i in range(len(kernel_size_conv)):
-            self.convs.append(nn.Conv1d(in_channels=1 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
-            self.batchnorms.append(nn.BatchNorm1d(num_features=channels[i]))
-            self.convs.append(nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
-            self.batchnorms.append(nn.BatchNorm1d(num_features=channels[i]))
-            self.pools.append(nn.MaxPool1d(kernel_size=kernel_size_pool[i]))
-        self.fc1 = nn.Linear(channels[-3] * fc_width, channels[-2])
-        self.batchnorms.append(nn.BatchNorm1d(num_features=channels[-2]))
-        self.fc2 = nn.Linear(channels[-2], channels[-1])
-        self.batchnorms.append(nn.BatchNorm1d(num_features=channels[-1]))
-        self.fc3 = nn.Linear(channels[-1], 1)
+lr_g = 1e-6
+lr_d = 1e-6
+gen_loss_factor = 10
 
-
-    def forward(self, x):
-        for i in range(len(kernel_size_conv)):
-            x = F.relu(self.batchnorms[i * 2](self.convs[i * 2](x)))
-            x = F.relu(self.batchnorms[i * 2 + 1](self.convs[i * 2 + 1](x)))
-            x = self.pools[i](x)
-        x = x.view(-1, channels[-3] * fc_width)
-        x = F.relu(self.batchnorms[-2](self.fc1(x)))
-        x = F.relu(self.batchnorms[-1](self.fc2(x)))
-        x = torch.sigmoid(self.fc3(x))
-        return x
-
-
+mn = 559.4985610615364
+std = 120.52172592468257
 def preprocess(x):
-    mn = 0#559.4985610615364
-    std = 120.52172592468257
     x_ret = x.clone()
     x_ret = (x_ret - mn) / std
+#    x_ret[x < eps] = (2 * mel_min - mel_max - mn) / std
+    return x_ret
+
+
+def postprocess(x):
+    x_ret = x.clone()
+    x_ret = x * std + mn
+    x_ret[x_ret < mel_min * 0.5] = 0
 #    x_ret[x < eps] = (2 * mel_min - mel_max - mn) / std
     return x_ret
 
@@ -382,23 +362,19 @@ def load_data():
                 target_data, others_data = test_target_data, test_others_data
             else:
                 target_data, others_data = train_target_data, train_others_data
-            contour = np.load(filename)
+                contour = np.load(filename)
             if contour.shape[0] < segment_size:
                 contour = np.pad(contour, (0, segment_size - contour.shape[0]))
-            for i in range(int(multiplicity_target * (contour.shape[0] - segment_size) / segment_size) + 1):
-                start = random.randint(0, contour.shape[0] - segment_size)
-                if np.sum(contour[start:start + segment_size] > eps) > segment_size * min_ratio:
-                    contour_final = contour[start:start + segment_size]
+            contour = np.pad(contour, (segment_size, segment_size))
+            for i in range(int(multiplicity_target * (contour.shape[0] - 3 * segment_size) / segment_size) + 1):
+                start = random.randint(segment_size, contour.shape[0] - segment_size * 2)
+                use_original = random.randint(0, 4) == 0
+                contour_sliced = contour[start - segment_size:start + 2 * segment_size].copy()
+                if np.sum(contour_sliced[segment_size:-segment_size] > eps) > segment_size * min_ratio:
+                    contour_final = contour_sliced
                     target_data.append(torch.tensor(contour_final, dtype=torch.float32))
-                    for j in range(10):
-                        others_data.append(torch.tensor(add_noise(contour_final, amp=random.uniform(5, 15), scale=random.uniform(1, 3)), dtype=torch.float32))
-#                    others_data.append(torch.tensor(pitch_blur_mel(contour[start:start + segment_size], frames_per_sec, border=0), dtype=torch.float32))
-#                    others_data.append(torch.tensor(change_vibrato(contour[start:start + segment_size], 5), dtype=torch.float32))
-#                    others_data.append(torch.tensor(modify_ends(contour[start:start + segment_size]), dtype=torch.float32))
 
     if multiplicity_others > 0:
-        min_segment_size = int(segment_size * 0.8)
-        max_segment_size = int(segment_size * 1.25)
         for filename in walk(OTHERS_PATH):
             if filename.endswith(".npy"):
                 if filename in test_set:
@@ -406,27 +382,19 @@ def load_data():
                 else:
                     target_data, others_data = train_target_data, train_others_data
                 contour = np.load(filename)
-                if contour.shape[0] < max_segment_size:
-                    contour = np.pad(contour, (0, max_segment_size - contour.shape[0]))
-                for i in range(int(multiplicity_others * (contour.shape[0] - segment_size) / segment_size) + 1):
-                    start = random.randint(0, contour.shape[0] - segment_size)
+                if contour.shape[0] < segment_size:
+                    contour = np.pad(contour, (0, segment_size - contour.shape[0]))
+                contour = np.pad(contour, (segment_size, segment_size))
+                for i in range(int(multiplicity_others * (contour.shape[0] - 3 * segment_size) / segment_size) + 1):
+                    start = random.randint(segment_size, contour.shape[0] - segment_size * 2)
                     use_original = random.randint(0, 4) == 0
-                    if use_original:
-                        actual_length = segment_size
-                    else:
-                        actual_length = random.randint(min_segment_size, max_segment_size)
-                        actual_length = min(actual_length, contour.shape[0])
-                    start = random.randint(0, contour.shape[0] - actual_length)
-                    contour_sliced = contour[start:start + actual_length].copy()
-                    if actual_length != segment_size:
-                        contour_sliced = resize_with_zeros(contour_sliced, segment_size)
-                    if np.sum(contour_sliced > eps) > segment_size * min_ratio:
+                    contour_sliced = contour[start - segment_size:start + 2 * segment_size].copy()
+                    if np.sum(contour_sliced[segment_size:-segment_size] > eps) > segment_size * min_ratio:
                         if use_original:
                             shift_real = 0
                         else:
-                            contour_sliced = change_vibrato(contour_sliced, random.uniform(0, 2))
                             shift = random.uniform(0, 1)
-                            average = get_average(contour_sliced) / 1127
+                            average = get_average(contour_sliced[contour_sliced > eps]) / 1127
                             LOW, HIGH = librosa.note_to_hz("Ab3"), librosa.note_to_hz("Bb5")
                             LOW, HIGH = math.log(1 + LOW / 700), math.log(1 + HIGH / 700)
                             average_goal = (HIGH - LOW) * shift + LOW
@@ -434,36 +402,47 @@ def load_data():
                             average_goal = (math.exp(average_goal) - 1) * 700
                             shift_real = math.log(average_goal / average) / math.log(2) * 12
                         contour_final = pitch_shift_mel(contour_sliced, shift_real)
-                        if random.uniform(0, 1) < 0.5:
-                            if random.randint(0, 4) == 0:
-                                amp = 5
-                                scale = 1
-                            else:
-                                amp = random.uniform(5, 30)
-                                scale = random.uniform(1, 2 ** random.randint(0, 10))
-                            contour_final = add_noise(contour_final, amp=amp, scale=scale)
                         others_data.append(torch.tensor(contour_final, dtype=torch.float32))
 
     print("Train target data count:", len(train_target_data))
     print("Train others data count:", len(train_others_data))
     print("Test target data count:", len(test_target_data))
     print("Test others data count:", len(test_others_data))
-    return map(torch.stack, (train_target_data, train_others_data, test_target_data, test_others_data))
+    return train_target_data, train_others_data, test_target_data, test_others_data
+
+
+def median_filter_torch(x, size):
+    return torch.median(torch.cat(tuple(x[:, i:x.shape[1] - size + i + 1].unsqueeze(2) for i in range(size)), dim=2), dim=2).values
+
+
+def contrastive_loss(output, ref, size):
+    output = output[:, segment_size:-segment_size]
+    ref = ref[:, segment_size:-segment_size]
+    output = median_filter_torch(output, median_filter_size)
+    ref = median_filter_torch(ref, size)
+    return F.mse_loss(output, ref)
 
 
 USE_TEST_SET = True
-def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data, include_fakes=False):
+def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
+    if train_target_data:
+        train_target_data = torch.stack(train_target_data)
+    if train_others_data:
+        train_others_data = torch.stack(train_others_data)
+    if test_target_data:
+        test_target_data = torch.stack(test_target_data)
+    if test_others_data:
+        test_others_data = torch.stack(test_others_data)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = PitchContourClassifier().to(device)
-    lr = 1e-5
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    net_g = PitchContourGenerator().to(device)
+    net_d = PitchContourDiscriminator().to(device)
+    optimizer_g = optim.AdamW(net_g.parameters(), lr=lr_g)
+    optimizer_d = optim.AdamW(net_d.parameters(), lr=lr_d)
     epoch = 0
 
     MODEL_FILE = name + ".pt"
     CHECKPOINT_FILE = name + " checkpoint.pt"
     TMP_FILE = name + "_tmp.pt"
-    if include_fakes:
-        FAKE_DATA_FILE = name + "_fakes.npy"
     if os.path.isfile(TMP_FILE):
         if not os.path.isfile(CHECKPOINT_FILE):
             os.rename(TMP_FILE, CHECKPOINT_FILE)
@@ -473,123 +452,139 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         if os.path.isfile(CHECKPOINT_FILE):
             checkpoint = torch.load(CHECKPOINT_FILE)
             epoch = checkpoint['epoch']
-            model.load_state_dict(checkpoint['model'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
+            net_g.load_state_dict(checkpoint['net_g'])
+            net_d.load_state_dict(checkpoint['net_d'])
+            optimizer_g.load_state_dict(checkpoint['optimizer_g'])
+            optimizer_d.load_state_dict(checkpoint['optimizer_d'])
             print(f"Data loaded from '{CHECKPOINT_FILE:s}'")
         else:
             print("Model initialized with random weights")
     except:
         epoch = 0
-        model = PitchContourClassifier().to(device)
-        optimizer = optim.Adam(model.parameters(), lr=lr)
+        net_g = PitchContourGenerator().to(device)
+        net_d = PitchContourDiscriminator().to(device)
+        optimizer_g = optim.Adam(net_g.parameters(), lr=lr_g)
+        optimizer_d = optim.Adam(net_d.parameters(), lr=lr_d)
         print("Model initialized with random weights")
+
+    train_dataset = torch.utils.data.TensorDataset(train_target_data, torch.ones((len(train_target_data),)))
+    if len(train_others_data):
+        train_dataset += torch.utils.data.TensorDataset(train_others_data, torch.zeros((len(train_others_data),)))
+    if USE_TEST_SET:
+        test_dataset = torch.utils.data.TensorDataset(test_target_data, torch.ones((len(test_target_data),)))
+        if len(test_others_data):
+            test_dataset += torch.utils.data.TensorDataset(test_others_data, torch.zeros((len(test_others_data),)))
+    else:
+        if len(test_target_data):
+            train_dataset += torch.utils.data.TensorDataset(test_target_data, torch.ones((len(test_target_data),)))
+        if len(test_others_data):
+            train_dataset += torch.utils.data.TensorDataset(test_others_data, torch.zeros((len(test_others_data),)))
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+    if USE_TEST_SET:
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=True)
 
     criterion = nn.BCELoss()
 
-    if include_fakes:
-        lr_fakes = 0.1#lr * 1e3
-        lr_epoch = round(1e6 * lr)
-        fake_count = len(train_target_data) // lr_epoch
-        reset_prob = 1e-3 * lr_epoch
-        others_data_npy = train_others_data.cpu().numpy()
-        fakes_loaded = False
-        if os.path.isfile(FAKE_DATA_FILE):
-            fakes = np.load(FAKE_DATA_FILE)
-            if len(fakes) == fake_count:
-               fakes_loaded = True
-            else:
-               fakes_loaded = False
-        if not fakes_loaded:
-            fakes = np.array([others_data_npy[random.randint(0, len(others_data_npy) - 1)] for i in range(fake_count)])
-
-    model.train()
+    net_g.train()
 
     best_loss = float("inf")
+
     while True:
-        train_dataset = torch.utils.data.TensorDataset(train_target_data, torch.full((len(train_target_data),), 1.0))
-        train_dataset += torch.utils.data.TensorDataset(train_others_data, torch.full((len(train_others_data),), 0.0))
-        if USE_TEST_SET:
-            test_dataset = torch.utils.data.TensorDataset(test_target_data, torch.full((len(test_target_data),), 1.0))
-            test_dataset += torch.utils.data.TensorDataset(test_others_data, torch.full((len(test_others_data),), 0.0))
-        else:
-            train_dataset += torch.utils.data.TensorDataset(test_target_data, torch.full((len(test_target_data),), 1.0))
-            train_dataset += torch.utils.data.TensorDataset(test_others_data, torch.full((len(test_others_data),), 0.0))
-        if include_fakes:
-            fakes_dataset = torch.utils.data.TensorDataset(torch.stack([torch.tensor(data, dtype=torch.float32) for data in fakes]), torch.full((fake_count,), 0.0))
-            train_dataset += fakes_dataset
-
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
-        if USE_TEST_SET:
-            test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=True)
-
         epoch += 1
 
-        train_loss = 0.0
+        train_disc_loss = 0
+        train_contrastive_loss = 0
+        train_gen_loss = 0
         for batch_idx, (data, labels) in enumerate(train_loader):
             data, labels = data.to(device), labels.to(device)
+            fakes = postprocess(net_g(preprocess(data.unsqueeze(1)))).squeeze(1)
+            fakes[data < eps] = 0
+            d_data = fakes.detach().clone()
+            d_data[labels > eps] = data[labels > eps]
+            d_labels = labels#torch.zeros((d_data.shape[0],), device=device)
+#            if torch.sum(labels > eps) > 0:
+#                target_data = data[labels > eps]
+#                target_labels = torch.ones((target_data.shape[0],), device=device)
+#                d_data = torch.cat((d_data, target_data), dim=0)
+#                d_labels = torch.cat((d_labels, target_labels), dim=0)
+            d_data = d_data[:, (d_data.shape[1] + segment_size_disc) // 2 - segment_size_disc:(d_data.shape[1] + segment_size_disc) // 2]
+            outputs = net_d(preprocess(d_data.unsqueeze(1)))
 
-            optimizer.zero_grad()
-            outputs = model(preprocess(data.unsqueeze(1)))
-            loss = criterion(outputs, labels.unsqueeze(1))
+            optimizer_d.zero_grad()
+            loss = criterion(outputs, d_labels.unsqueeze(1))
             loss.backward()
-            optimizer.step()
+            optimizer_d.step()
 
-            train_loss += loss.item()  
-        train_loss /= len(train_loader)
+            train_disc_loss += loss.item()
+
+
+            g_data = fakes
+            g_labels = torch.ones((g_data.shape[0],), device=device)
+            g_data = g_data[:, (g_data.shape[1] + segment_size_disc) // 2 - segment_size_disc:(g_data.shape[1] + segment_size_disc) // 2]
+            outputs = net_d(preprocess(g_data.unsqueeze(1)))
+
+            loss_total = 0
+            loss = criterion(outputs, g_labels.unsqueeze(1))
+            loss_total = loss * gen_loss_factor
+            train_gen_loss += loss.item()
+
+            if torch.sum(labels > eps) > 0:
+                target_fakes = fakes[labels > eps]
+                target_data = data[labels > eps]
+                loss = contrastive_loss(target_fakes, target_data, median_filter_size)
+                loss_total += loss
+                train_contrastive_loss += loss.item()
+
+            optimizer_g.zero_grad()
+            loss_total.backward()
+            optimizer_g.step()
+
+        train_disc_loss /= len(train_loader)
+        train_contrastive_loss /= len(train_loader)
+        train_gen_loss /= len(train_loader)
+        train_loss = train_contrastive_loss + train_gen_loss * gen_loss_factor
 
         if USE_TEST_SET:
-            test_loss = 0.0
+            test_contrastive_loss = 0
+            test_gen_loss = 0
             for batch_idx, (data, labels) in enumerate(test_loader):
                 data, labels = data.to(device), labels.to(device)
+                fakes = postprocess(net_g(preprocess(data.unsqueeze(1)))).squeeze(1)
+                fakes[data < eps] = 0
 
-                optimizer.zero_grad()
-                outputs = model(preprocess(data.unsqueeze(1)))
-                loss = criterion(outputs, labels.unsqueeze(1))
-                loss.backward()
-                optimizer.step()
+                g_data = fakes
+                g_labels = torch.ones((g_data.shape[0],), device=device)
+                g_data = g_data[:, (g_data.shape[1] + segment_size_disc) // 2 - segment_size_disc:(g_data.shape[1] + segment_size_disc) // 2]
+                outputs = net_d(preprocess(g_data.unsqueeze(1)))
+                loss = criterion(outputs, g_labels.unsqueeze(1))
+                test_gen_loss += loss.item()
 
-                test_loss += loss.item()  
-            test_loss /= len(test_loader)
+                if torch.sum(labels > eps) > 0:
+                    target_fakes = fakes[labels > eps]
+                    target_data = data[labels > eps]
+                    loss = contrastive_loss(target_fakes, target_data, median_filter_size)
+                    test_contrastive_loss += loss.item()
 
-        if include_fakes:
-            fakes_loader = torch.utils.data.DataLoader(fakes_dataset, batch_size=256, shuffle=True)
-            fakes_similarity = 0
-            fakes_new = torch.empty((0, segment_size), dtype=torch.float32).to(device)
-            for batch_idx, (data, labels) in enumerate(fakes_loader):
-                data, labels = data.to(device), labels.to(device)
-                data.requires_grad_(True)
-                fakes_optimizer = optim.Adam([data], lr=lr_fakes) 
-                for i in range(lr_epoch):
-                    fakes_optimizer.zero_grad()
-                    fakes_outputs = model(preprocess(data.unsqueeze(1)))
-                    fakes_loss = torch.sum(1 - fakes_outputs)
-                    current_similarity = torch.sum(fakes_outputs)
-                    fakes_loss.backward()
-                    fakes_optimizer.step()
-                fakes_similarity += current_similarity
-                fakes_new = torch.cat((fakes_new, data.detach()))
-            fakes = fakes_new.cpu().numpy()
-            fakes_similarity /= fake_count
+            test_contrastive_loss /= len(test_loader)
+            test_gen_loss /= len(test_loader)
+            test_loss = test_contrastive_loss + test_gen_loss * gen_loss_factor
 
 
-#        for i in range(fake_count):
-#            if random.uniform(0, 1) < reset_prob:
-#                fakes[i] = others_data_npy[random.randint(0, len(others_data_npy) - 1)]
-        # Print epoch statistics
         if epoch % 1 == 0:
+            print(f"Epoch: {epoch:d}")
+            print(f"t_loss: {train_loss:.6f} t_loss_c: {train_contrastive_loss:.6f} t_loss_g: {train_gen_loss:.6f} t_loss_d: {train_disc_loss:.8f}")
             if USE_TEST_SET:
-                print(f"Epoch: {epoch:d} Train Loss: {train_loss:.6f} Test Loss: {test_loss:.6f}")# Gen Similarity: {fakes_similarity:.4f}") 
-            else:
-                print(f"Epoch: {epoch:d} Train Loss: {train_loss:.6f}")# Gen Similarity: {fakes_similarity:.4f}") 
-            if include_fakes:
-                print(f"Fakes Similarity: {fakes_similarity:.6f}")
+                print(f"v_loss: {test_loss:.6f} v_loss_c: {test_contrastive_loss:.6f} v_loss_g: {test_gen_loss:.6f}")
             checkpoint = { 
                 'epoch': epoch,
-                'model': model.state_dict(),
-                'optimizer': optimizer.state_dict()}
+                'net_g': net_g.state_dict(),
+                'net_d': net_d.state_dict(),
+                'optimizer_g': optimizer_g.state_dict(),
+                'optimizer_d': optimizer_d.state_dict()}
             while True:
                 try:
-                    torch.save(model.state_dict(), MODEL_FILE) 
+                    torch.save(net_g.state_dict(), MODEL_FILE) 
                     break
                 except:
                     pass
@@ -613,105 +608,16 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             except:
                 pass
             print(f"Data saved.")
-        if (USE_TEST_SET and test_loss < best_loss) or ((not USE_TEST_SET) and train_loss < best_loss):
-            best_loss = test_loss if USE_TEST_SET else train_loss 
+        if True:#(USE_TEST_SET and test_loss < best_loss) or ((not USE_TEST_SET) and train_loss < best_loss):
+            #            best_loss = test_loss if USE_TEST_SET else train_loss 
             BAK_FILE = name + " " + str(epoch // 50 * 50) + ".pt"
             while True:
                 try:
-                    torch.save(model.state_dict(), BAK_FILE) 
+                    torch.save(net_g.state_dict(), BAK_FILE) 
                     break
                 except:
                     pass
             print(f"Model backed up to '{BAK_FILE:s}'")
-
-def modify_contour(model, original_contour, threshold=0.65):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    original_contour = np.pad(original_contour, (segment_size, segment_size))
-    original_contour_tensor = torch.tensor(original_contour, dtype=torch.float32, device=device)
-    changes = torch.zeros(len(original_contour), dtype=torch.float32, device=device)
-    changes.requires_grad_(True)
-
-    optimizer = optim.Adam([changes], lr=0.01) 
-#    lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.9999)
-#    epoch_count = 10000
-
-    model.eval()
-
-    max_lives = 100
-    best_output = None
-    best_changes = None
-    lives = max_lives
-    epoch = 0
-    beta = 0.99
-    output_raw = 0
-    beta_decayed = 1
-    while True:
-        epoch += 1
-#    for epoch in range(epoch_count):
-        start = random.randint(1, segment_size)
-        changed = original_contour_tensor + changes
-#        changed[original_contour_tensor < eps] = 0
-        modified_contours = []
-        cur = start
-        while cur + segment_size < len(changes):
-            if torch.sum(original_contour_tensor[cur:cur + segment_size] > eps) > 0:
-                modified_contours.append((changed[cur:cur + segment_size]).unsqueeze(0))
-            cur += segment_size
-        optimizer.zero_grad()
-        outputs = model(preprocess(torch.stack(modified_contours))).view(-1)
-        cur = start
-        sum_output = 0
-        segment_count = 0
-        norm = 0.5
-        index = 0
-        loss = 0
-        while cur + segment_size < len(changes):
-            if torch.sum(original_contour_tensor[cur:cur + segment_size] > eps) > 0:
-                current_output = outputs[index]
-                index += 1
-                if current_output > 0:
-                    loss += 1 - (current_output ** norm)
-                else:
-                    loss += 1 - current_output
-                sum_output += current_output ** norm
-                segment_count += 1
-            cur += segment_size
-        loss.backward()
-        changes_zeroed = changes.clone()
-        changes_zeroed[original_contour_tensor < eps] = 0
-        mse_loss = F.mse_loss(changes_zeroed[1:], changes_zeroed[:-1])
-        l1_loss = torch.mean(torch.abs(changes_zeroed))
-#        loss = ((1 * l1_loss + 0 * mse_loss) * 1e-3 * segment_count)
-#        loss.backward()
-        if segment_count > 0: 
-            output_current = (sum_output / segment_count) ** (1 / norm)
-        else:
-            output_current = 1
-        output_raw = output_raw * beta + output_current * (1 - beta)
-        beta_decayed *= beta
-        output = output_raw / (1 - beta_decayed)
-#        print(output)
-        print("Similarity: %.4f MSE: %.4f L1: %.4f" % (output, mse_loss, l1_loss))
-        if best_output is None:
-            print("Initial similarity: %.4f" % output.squeeze(0).squeeze(0))
-            best_output = output
-            best_changes = changes.clone()
-        if output > best_output:
-            best_output = output
-            best_changes = changes.clone()
-            lives = max_lives
-        else:
-            lives -= 1
-        if output >= threshold:# or (epoch > 1000 and lives == 0):
-            break
-        optimizer.step()
-
-    print("Final similarity: %.4f" % output.squeeze(0).squeeze())
-    best_contour = original_contour_tensor + changes
-    final_contour = best_contour.detach().cpu().numpy() 
-    final_contour = final_contour[segment_size:-segment_size]
-    return final_contour
 
 
 if __name__ == "__main__":
