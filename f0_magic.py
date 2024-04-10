@@ -34,12 +34,19 @@ mel_max = 1127 * math.log(1 + 1100 / 700)
 
 multiplicity_target = 40
 multiplicity_others = 40
+max_offset = round(segment_size / 40)
 min_ratio = 0.5
 median_filter_size = 17
+gaussian_filter_sigma = 8
+data_noise_amp = 5
+label_noise_amp = 0.1
 
-lr_g = 1e-6
-lr_d = 1e-6
-gen_loss_factor = 10
+USE_TEST_SET = True
+EPOCH_PER_BAK = 25
+
+lr_g = 1e-5
+lr_d = 1e-5
+c_loss_factor = 0.1
 
 mn = 559.4985610615364
 std = 120.52172592468257
@@ -365,11 +372,11 @@ def load_data():
                 contour = np.load(filename)
             if contour.shape[0] < segment_size:
                 contour = np.pad(contour, (0, segment_size - contour.shape[0]))
-            contour = np.pad(contour, (segment_size, segment_size))
-            for i in range(int(multiplicity_target * (contour.shape[0] - 3 * segment_size) / segment_size) + 1):
-                start = random.randint(segment_size, contour.shape[0] - segment_size * 2)
+            contour = np.pad(contour, (segment_size + max_offset, segment_size))
+            for i in range(int(multiplicity_target * (contour.shape[0] - 3 * segment_size - max_offset) / segment_size) + 1):
+                start = random.randint(segment_size + max_offset, contour.shape[0] - segment_size * 2)
                 use_original = random.randint(0, 4) == 0
-                contour_sliced = contour[start - segment_size:start + 2 * segment_size].copy()
+                contour_sliced = contour[start - segment_size - max_offset:start + 2 * segment_size].copy()
                 if np.sum(contour_sliced[segment_size:-segment_size] > eps) > segment_size * min_ratio:
                     contour_final = contour_sliced
                     target_data.append(torch.tensor(contour_final, dtype=torch.float32))
@@ -384,11 +391,11 @@ def load_data():
                 contour = np.load(filename)
                 if contour.shape[0] < segment_size:
                     contour = np.pad(contour, (0, segment_size - contour.shape[0]))
-                contour = np.pad(contour, (segment_size, segment_size))
-                for i in range(int(multiplicity_others * (contour.shape[0] - 3 * segment_size) / segment_size) + 1):
-                    start = random.randint(segment_size, contour.shape[0] - segment_size * 2)
+                contour = np.pad(contour, (segment_size + max_offset, segment_size))
+                for i in range(int(multiplicity_others * (contour.shape[0] - 3 * segment_size - max_offset) / segment_size) + 1):
+                    start = random.randint(segment_size + max_offset, contour.shape[0] - segment_size * 2)
                     use_original = random.randint(0, 4) == 0
-                    contour_sliced = contour[start - segment_size:start + 2 * segment_size].copy()
+                    contour_sliced = contour[start - segment_size - max_offset:start + 2 * segment_size].copy()
                     if np.sum(contour_sliced[segment_size:-segment_size] > eps) > segment_size * min_ratio:
                         if use_original:
                             shift_real = 0
@@ -411,19 +418,32 @@ def load_data():
     return train_target_data, train_others_data, test_target_data, test_others_data
 
 
-def median_filter_torch(x, size):
+def median_filter1d_torch(x, size):
     return torch.median(torch.cat(tuple(x[:, i:x.shape[1] - size + i + 1].unsqueeze(2) for i in range(size)), dim=2), dim=2).values
 
 
+def gaussian_filter1d_torch(x, sigma, width=None):
+    if width is None:
+        width = round(sigma * 4)
+    distance = torch.arange(
+        -width, width + 1, dtype=torch.float32, device=x.device
+    )
+    gaussian = torch.exp(
+        -(distance ** 2) / (2 * sigma ** 2)
+    )
+    gaussian /= gaussian.sum()
+    kernel = gaussian[None, None].expand(1, -1, -1)
+    return F.conv1d(x.unsqueeze(1), kernel, padding="same").squeeze(1)
+
+
 def contrastive_loss(output, ref, size):
+#    output = gaussian_filter1d_torch(output, size)
+#    ref = gaussian_filter1d_torch(ref, size)
     output = output[:, segment_size:-segment_size]
     ref = ref[:, segment_size:-segment_size]
-    output = median_filter_torch(output, median_filter_size)
-    ref = median_filter_torch(ref, size)
     return F.mse_loss(output, ref)
 
 
-USE_TEST_SET = True
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
     if train_target_data:
         train_target_data = torch.stack(train_target_data)
@@ -487,6 +507,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     criterion = nn.BCELoss()
 
     net_g.train()
+    net_d.train()
 
     best_loss = float("inf")
 
@@ -498,16 +519,23 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         train_gen_loss = 0
         for batch_idx, (data, labels) in enumerate(train_loader):
             data, labels = data.to(device), labels.to(device)
+            offset = torch.randint(0, max_offset, (1,))
+            data = data[:, offset:data.shape[1] - max_offset + offset]
+#            data_disturbed = data + torch.randn_like(data) * data_noise_amp
+
             fakes = postprocess(net_g(preprocess(data.unsqueeze(1)))).squeeze(1)
-            fakes[data < eps] = 0
+#            fakes[data < eps] = 0
             d_data = fakes.detach().clone()
             d_data[labels > eps] = data[labels > eps]
-            d_labels = labels#torch.zeros((d_data.shape[0],), device=device)
-#            if torch.sum(labels > eps) > 0:
-#                target_data = data[labels > eps]
-#                target_labels = torch.ones((target_data.shape[0],), device=device)
-#                d_data = torch.cat((d_data, target_data), dim=0)
-#                d_labels = torch.cat((d_labels, target_labels), dim=0)
+#            d_data = d_data + torch.randn_like(d_data) * data_noise_amp
+            d_labels = labels
+#            d_labels = labels * (1 - label_noise_amp) + torch.rand(size=labels.shape, device=device) * label_noise_amp
+#            d_labels = torch.zeros((d_data.shape[0],), device=device)
+            if torch.sum(labels > eps) > 0:
+                target_data = data[labels > eps] + torch.randn_like(data[labels > eps]) * data_noise_amp
+                target_labels = torch.zeros((target_data.shape[0],), device=device)
+                d_data = torch.cat((d_data, target_data), dim=0)
+                d_labels = torch.cat((d_labels, target_labels), dim=0)
             d_data = d_data[:, (d_data.shape[1] + segment_size_disc) // 2 - segment_size_disc:(d_data.shape[1] + segment_size_disc) // 2]
             outputs = net_d(preprocess(d_data.unsqueeze(1)))
 
@@ -519,56 +547,55 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             train_disc_loss += loss.item()
 
 
-            g_data = fakes
-            g_labels = torch.ones((g_data.shape[0],), device=device)
-            g_data = g_data[:, (g_data.shape[1] + segment_size_disc) // 2 - segment_size_disc:(g_data.shape[1] + segment_size_disc) // 2]
-            outputs = net_d(preprocess(g_data.unsqueeze(1)))
+            if torch.sum(labels < eps) > 0:
+                g_data = fakes[labels < eps]
+                g_labels = torch.ones((g_data.shape[0],), device=device)
+                g_data = g_data[:, (g_data.shape[1] + segment_size_disc) // 2 - segment_size_disc:(g_data.shape[1] + segment_size_disc) // 2]
+                outputs = net_d(preprocess(g_data.unsqueeze(1)))
 
-            loss_total = 0
-            loss = criterion(outputs, g_labels.unsqueeze(1))
-            loss_total = loss * gen_loss_factor
-            train_gen_loss += loss.item()
+                loss_total = 0
+                loss = criterion(outputs, g_labels.unsqueeze(1))
+                loss_total = loss
+                train_gen_loss += loss.item()
 
-            if torch.sum(labels > eps) > 0:
-                target_fakes = fakes[labels > eps]
-                target_data = data[labels > eps]
-                loss = contrastive_loss(target_fakes, target_data, median_filter_size)
-                loss_total += loss
+                loss = contrastive_loss(fakes, data, gaussian_filter_sigma)
+                loss_total += loss * c_loss_factor
                 train_contrastive_loss += loss.item()
 
-            optimizer_g.zero_grad()
-            loss_total.backward()
-            optimizer_g.step()
+                optimizer_g.zero_grad()
+                loss_total.backward()
+                optimizer_g.step()
 
         train_disc_loss /= len(train_loader)
         train_contrastive_loss /= len(train_loader)
         train_gen_loss /= len(train_loader)
-        train_loss = train_contrastive_loss + train_gen_loss * gen_loss_factor
+        train_loss = train_contrastive_loss * c_loss_factor + train_gen_loss
 
         if USE_TEST_SET:
             test_contrastive_loss = 0
             test_gen_loss = 0
             for batch_idx, (data, labels) in enumerate(test_loader):
                 data, labels = data.to(device), labels.to(device)
-                fakes = postprocess(net_g(preprocess(data.unsqueeze(1)))).squeeze(1)
-                fakes[data < eps] = 0
+                offset = torch.randint(0, max_offset, (1,))
+                if torch.sum(labels < eps) > 0:
+                    data = data[:, offset:data.shape[1] - max_offset + offset]
+#                    data_disturbed = data + torch.randn_like(data) * data_noise_amp
+                    fakes = postprocess(net_g(preprocess(data.unsqueeze(1)))).squeeze(1)
+                    fakes[data < eps] = 0
 
-                g_data = fakes
-                g_labels = torch.ones((g_data.shape[0],), device=device)
-                g_data = g_data[:, (g_data.shape[1] + segment_size_disc) // 2 - segment_size_disc:(g_data.shape[1] + segment_size_disc) // 2]
-                outputs = net_d(preprocess(g_data.unsqueeze(1)))
-                loss = criterion(outputs, g_labels.unsqueeze(1))
-                test_gen_loss += loss.item()
+                    g_data = fakes[labels < eps]
+                    g_labels = torch.ones((g_data.shape[0],), device=device)
+                    g_data = g_data[:, (g_data.shape[1] + segment_size_disc) // 2 - segment_size_disc:(g_data.shape[1] + segment_size_disc) // 2]
+                    outputs = net_d(preprocess(g_data.unsqueeze(1)))
+                    loss = criterion(outputs, g_labels.unsqueeze(1))
+                    test_gen_loss += loss.item()
 
-                if torch.sum(labels > eps) > 0:
-                    target_fakes = fakes[labels > eps]
-                    target_data = data[labels > eps]
-                    loss = contrastive_loss(target_fakes, target_data, median_filter_size)
+                    loss = contrastive_loss(fakes, data, gaussian_filter_sigma)
                     test_contrastive_loss += loss.item()
 
             test_contrastive_loss /= len(test_loader)
             test_gen_loss /= len(test_loader)
-            test_loss = test_contrastive_loss + test_gen_loss * gen_loss_factor
+            test_loss = test_contrastive_loss * c_loss_factor + test_gen_loss
 
 
         if epoch % 1 == 0:
@@ -610,7 +637,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             print(f"Data saved.")
         if True:#(USE_TEST_SET and test_loss < best_loss) or ((not USE_TEST_SET) and train_loss < best_loss):
             #            best_loss = test_loss if USE_TEST_SET else train_loss 
-            BAK_FILE = name + " " + str(epoch // 50 * 50) + ".pt"
+            BAK_FILE = name + " " + str(epoch // EPOCH_PER_BAK * EPOCH_PER_BAK) + ".pt"
             while True:
                 try:
                     torch.save(net_g.state_dict(), BAK_FILE) 
