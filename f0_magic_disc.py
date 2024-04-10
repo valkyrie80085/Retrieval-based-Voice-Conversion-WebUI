@@ -5,7 +5,7 @@ import torch.optim as optim
 
 
 segment_size = 1075
-channels = [32, 64, 128, 256, 512, 256, 256]
+channels = [64, 128, 256, 512, 1024, 512, 512]
 kernel_size_conv = [5, 5, 5, 3, 3]
 kernel_size_pool = [3, 3, 3, 2, 2]
 fc_width = 5

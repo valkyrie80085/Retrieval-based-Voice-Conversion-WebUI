@@ -261,8 +261,8 @@ def compute_f0(path):
 
 
 
-TARGET_PATH = "f0_magic/target"
-OTHERS_PATH = "f0_magic/others"
+TARGET_PATH = "C:/datasets/singing_ai/f0_magic/target"
+OTHERS_PATH = "C:/datasets/singing_ai/f0_magic/others"
 
 def walk(path):
    return sum(([os.path.join(dirpath, file_name) for file_name in filenames] for (dirpath, dirnames, filenames) in os.walk(path)), [])
