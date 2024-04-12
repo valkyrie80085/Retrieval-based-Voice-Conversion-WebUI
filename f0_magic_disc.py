@@ -25,11 +25,11 @@ class PitchContourDiscriminator(nn.Module):
 
     def forward(self, x):
         for i in range(len(kernel_size_conv)):
-            x = F.relu(self.convs[i * 2](x))
-            x = F.relu(self.convs[i * 2 + 1](x))
+            x = F.dropout(F.leaky_relu(self.convs[i * 2](x)))
+            x = F.dropout(F.leaky_relu(self.convs[i * 2 + 1](x)))
             x = self.pools[i](x)
         x = x.view(-1, channels[-3] * fc_width)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
+        x = F.dropout(F.leaky_relu(self.fc1(x)))
+        x = F.dropout(F.leaky_relu(self.fc2(x)))
         x = torch.sigmoid(self.fc3(x))
         return x

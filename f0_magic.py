@@ -26,13 +26,15 @@ from f0_magic_gen import PitchContourGenerator, segment_size
 from f0_magic_disc import PitchContourDiscriminator 
 from f0_magic_disc import segment_size as segment_size_disc
 
+padding_size = 2 * segment_size
+
 config = Config()
 
 eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 40
+multiplicity_target = 400
 multiplicity_others = 40
 max_offset = round(segment_size / 40)
 min_ratio = 0.5
@@ -46,10 +48,10 @@ EPOCH_PER_BAK = 25
 
 lr_g = 1e-5
 lr_d = 1e-5
-c_loss_factor = 0.1
+c_loss_factor = 1
 
-mn = 559.4985610615364
-std = 120.52172592468257
+mn = 550
+std = 120
 def preprocess(x):
     x_ret = x.clone()
     x_ret = (x_ret - mn) / std
@@ -363,6 +365,7 @@ def load_data():
         if filename.endswith(".npy"): 
             if random.uniform(0, 1) < 0.2:
                 test_set.add(filename)
+    target_averages = []
     for filename in walk(TARGET_PATH):
         if filename.endswith(".npy"): 
             if filename in test_set:
@@ -372,12 +375,13 @@ def load_data():
                 contour = np.load(filename)
             if contour.shape[0] < segment_size:
                 contour = np.pad(contour, (0, segment_size - contour.shape[0]))
-            contour = np.pad(contour, (segment_size + max_offset, segment_size))
-            for i in range(int(multiplicity_target * (contour.shape[0] - 3 * segment_size - max_offset) / segment_size) + 1):
-                start = random.randint(segment_size + max_offset, contour.shape[0] - segment_size * 2)
-                use_original = random.randint(0, 4) == 0
-                contour_sliced = contour[start - segment_size - max_offset:start + 2 * segment_size].copy()
-                if np.sum(contour_sliced[segment_size:-segment_size] > eps) > segment_size * min_ratio:
+            contour = np.pad(contour, (padding_size + max_offset, padding_size))
+            for i in range(round(multiplicity_target * (contour.shape[0] - max_offset - 2 * padding_size) / segment_size) + 1):
+                start = random.randint(padding_size + max_offset, contour.shape[0] - padding_size - segment_size)
+                contour_sliced = contour[start - padding_size - max_offset:start + padding_size + segment_size].copy()
+                if np.sum(contour_sliced[padding_size:-padding_size] > eps) > segment_size * min_ratio:
+                    average = get_average(contour_sliced[contour_sliced > eps]) / 1127
+                    target_averages.append(average)
                     contour_final = contour_sliced
                     target_data.append(torch.tensor(contour_final, dtype=torch.float32))
 
@@ -391,20 +395,17 @@ def load_data():
                 contour = np.load(filename)
                 if contour.shape[0] < segment_size:
                     contour = np.pad(contour, (0, segment_size - contour.shape[0]))
-                contour = np.pad(contour, (segment_size + max_offset, segment_size))
-                for i in range(int(multiplicity_others * (contour.shape[0] - 3 * segment_size - max_offset) / segment_size) + 1):
-                    start = random.randint(segment_size + max_offset, contour.shape[0] - segment_size * 2)
-                    use_original = random.randint(0, 4) == 0
-                    contour_sliced = contour[start - segment_size - max_offset:start + 2 * segment_size].copy()
-                    if np.sum(contour_sliced[segment_size:-segment_size] > eps) > segment_size * min_ratio:
+                contour = np.pad(contour, (padding_size + max_offset, padding_size))
+                for i in range(round(multiplicity_others * (contour.shape[0] - max_offset - 2 * padding_size) / segment_size)):
+                    start = random.randint(padding_size + max_offset, contour.shape[0] - padding_size - segment_size)
+                    use_original = False#random.randint(0, 4) == 0
+                    contour_sliced = contour[start - padding_size - max_offset:start + padding_size + segment_size].copy()
+                    if np.sum(contour_sliced[padding_size:-padding_size] > eps) > segment_size * min_ratio:
                         if use_original:
                             shift_real = 0
                         else:
-                            shift = random.uniform(0, 1)
                             average = get_average(contour_sliced[contour_sliced > eps]) / 1127
-                            LOW, HIGH = librosa.note_to_hz("Ab3"), librosa.note_to_hz("Bb5")
-                            LOW, HIGH = math.log(1 + LOW / 700), math.log(1 + HIGH / 700)
-                            average_goal = (HIGH - LOW) * shift + LOW
+                            average_goal = random.choice(target_averages)
                             average = (math.exp(average) - 1) * 700
                             average_goal = (math.exp(average_goal) - 1) * 700
                             shift_real = math.log(average_goal / average) / math.log(2) * 12
@@ -422,26 +423,53 @@ def median_filter1d_torch(x, size):
     return torch.median(torch.cat(tuple(x[:, i:x.shape[1] - size + i + 1].unsqueeze(2) for i in range(size)), dim=2), dim=2).values
 
 
-def gaussian_filter1d_torch(x, sigma, width=None):
+def gaussian_kernel1d_torch(sigma, width=None):
     if width is None:
         width = round(sigma * 4)
     distance = torch.arange(
-        -width, width + 1, dtype=torch.float32, device=x.device
+        -width, width + 1, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu") 
     )
     gaussian = torch.exp(
         -(distance ** 2) / (2 * sigma ** 2)
     )
     gaussian /= gaussian.sum()
-    kernel = gaussian[None, None].expand(1, -1, -1)
-    return F.conv1d(x.unsqueeze(1), kernel, padding="same").squeeze(1)
+    kernel = gaussian[None, None]
+    return kernel
 
 
 def contrastive_loss(output, ref, size):
-#    output = gaussian_filter1d_torch(output, size)
-#    ref = gaussian_filter1d_torch(ref, size)
-    output = output[:, segment_size:-segment_size]
-    ref = ref[:, segment_size:-segment_size]
-    return F.mse_loss(output, ref)
+    kernel = gaussian_kernel1d_torch(size)
+
+    output_blurred = F.conv1d(output.unsqueeze(1), kernel, padding="same").squeeze(1)
+    ref_blurred = F.conv1d(ref.unsqueeze(1), kernel, padding="same").squeeze(1)
+
+    left_kernel = kernel[:, :, :kernel.shape[2] // 2 + 1].clone()
+    left_kernel /= left_kernel.sum()
+    right_kernel = kernel[:, :, kernel.shape[2] // 2:].clone()
+    right_kernel /= right_kernel.sum()
+
+    threshold = 1.0
+    mask = (F.pad(torch.abs(ref_blurred[:, 1:] - ref_blurred[:, :-1]), (0, 1)) > threshold).float()
+    mask_kernel = gaussian_kernel1d_torch(2)
+    mask_kernel /= mask_kernel.sum()
+    mask = F.conv1d(mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+
+    left_output = F.conv1d(output.unsqueeze(1), left_kernel, padding="same").squeeze(1)
+    left_ref = F.conv1d(ref.unsqueeze(1), left_kernel, padding="same").squeeze(1)
+    right_output = F.conv1d(output.unsqueeze(1), right_kernel, padding="same").squeeze(1)
+    right_ref = F.conv1d(ref.unsqueeze(1), right_kernel, padding="same").squeeze(1)
+
+    left_output *= mask
+    left_ref *= mask
+    right_output *= mask
+    right_ref *= mask
+
+    left_output = left_output[:, padding_size:-padding_size]
+    left_ref = left_ref[:, padding_size:-padding_size]
+    right_output = right_output[:, padding_size:-padding_size]
+    right_ref = right_ref[:, padding_size:-padding_size]
+
+    return F.mse_loss(output_blurred, ref_blurred) + F.mse_loss(left_output, left_ref) + F.mse_loss(right_output, right_ref)
 
 
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
@@ -502,12 +530,9 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
     if USE_TEST_SET:
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=256, shuffle=True)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=True)
 
     criterion = nn.BCELoss()
-
-    net_g.train()
-    net_d.train()
 
     best_loss = float("inf")
 
@@ -518,6 +543,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         train_contrastive_loss = 0
         train_gen_loss = 0
         for batch_idx, (data, labels) in enumerate(train_loader):
+            net_d.train()
             data, labels = data.to(device), labels.to(device)
             offset = torch.randint(0, max_offset, (1,))
             data = data[:, offset:data.shape[1] - max_offset + offset]
@@ -546,7 +572,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             train_disc_loss += loss.item()
 
-
+            net_d.eval()
             if torch.sum(labels < eps) > 0:
                 g_data = fakes[labels < eps]
                 g_labels = torch.ones((g_data.shape[0],), device=device)
@@ -575,6 +601,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             test_contrastive_loss = 0
             test_gen_loss = 0
             for batch_idx, (data, labels) in enumerate(test_loader):
+                net_d.eval()
                 data, labels = data.to(device), labels.to(device)
                 offset = torch.randint(0, max_offset, (1,))
                 if torch.sum(labels < eps) > 0:

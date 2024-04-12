@@ -4,7 +4,7 @@ import numpy as np
 from scipy.ndimage import median_filter
 
 from f0_magic import compute_f0_inference, pitch_invert_mel, pitch_shift_mel#, noise_amp
-from f0_magic import postprocess, preprocess
+from f0_magic import postprocess, preprocess, padding_size
 from f0_magic_gen import PitchContourGenerator, segment_size
 
 import random
@@ -54,7 +54,7 @@ input_contour_mel = 1127 * np.log(1 + input_contour / 700)
 if invert_axis is not None:
     input_contour_mel = pitch_invert_mel(input_contour_mel, invert_axis) 
 modified_contour_mel = pitch_shift_mel(input_contour_mel, pitch_shift)
-modified_contour_mel = np.pad(modified_contour_mel, (segment_size, segment_size))
+modified_contour_mel = np.pad(modified_contour_mel, (padding_size, padding_size))
 extra = segment_size - ((len(modified_contour_mel) - 1) % segment_size + 1)
 modified_contour_mel = np.pad(modified_contour_mel, (extra, 0))
 modified_contour_mel_tensor = torch.tensor(modified_contour_mel, dtype=torch.float32, device="cuda")
@@ -62,7 +62,7 @@ modified_contour_mel_tensor = torch.tensor(modified_contour_mel, dtype=torch.flo
 modified_contour_mel_tensor = postprocess(model(preprocess(modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0)))).squeeze(0).squeeze(0)
 modified_contour_mel = modified_contour_mel_tensor.detach().cpu().numpy()
 modified_contour_mel = modified_contour_mel[extra:]
-modified_contour_mel = modified_contour_mel[segment_size:-segment_size]
+modified_contour_mel = modified_contour_mel[padding_size:-padding_size]
 #modified_contour_mel = median_filter(modified_contour_mel, size=17)
 #modified_contour_mel = modify_contour_mel(model, modified_contour_mel, threshold=threshold)
 #modified_contour_mel = pitch_shift_mel(modified_contour_mel, 0)
