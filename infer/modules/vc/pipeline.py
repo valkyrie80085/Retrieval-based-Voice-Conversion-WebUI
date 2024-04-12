@@ -16,7 +16,10 @@ import pyworld
 import torch
 import torch.nn.functional as F
 import torchcrepe
+
 from scipy import signal
+
+from pyloudnorm.iirfilter import IIRfilter
 
 from infer.lib.audio import extract_features_simple
 
@@ -41,12 +44,29 @@ def cache_harvest_f0(input_audio_path, fs, f0max, f0min, frame_period):
     return f0
 
 
+def k_weighting_filter(data, rate):
+    high_shelf = IIRfilter(4.0, 1 / np.sqrt(2), 1500.0, rate, 'high_shelf')
+    high_pass = IIRfilter(0.0, 0.5, 38.0, rate, 'high_pass')
+    if len(data.shape) == 1:
+        data = high_shelf.apply_filter(data)
+        data = high_pass.apply_filter(data)
+    else:
+        data = data.copy()
+        for ch in len(data.shape[0]):
+            data[ch] = high_shelf.apply_filter(data[ch])
+            data[ch] = high_pass.apply_filter(data[ch])
+    return data
+
+
 def change_rms(data1, sr1, data2, sr2, rate):  # 1是输入音频，2是输出音频,rate是2的占比
     # print(data1.max(),data2.max())
+    data1_filtered = k_weighting_filter(data1, sr1)
+    data2_filtered = k_weighting_filter(data2, sr2)
+    
     rms1 = librosa.feature.rms(
-        y=data1, frame_length=sr1 // 2 * 2, hop_length=sr1 // 2
+        y=data1_filtered, frame_length=sr1 // 2 * 2, hop_length=sr1 // 2
     )  # 每半秒一个点
-    rms2 = librosa.feature.rms(y=data2, frame_length=sr2 // 2 * 2, hop_length=sr2 // 2)
+    rms2 = librosa.feature.rms(y=data2_filtered, frame_length=sr2 // 2 * 2, hop_length=sr2 // 2)
     rms1 = torch.from_numpy(rms1)
     rms1 = F.interpolate(
         rms1.unsqueeze(0), size=data2.shape[0], mode="linear"
