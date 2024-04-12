@@ -26,6 +26,8 @@ from configs.config import Config
 from sklearn.cluster import MiniBatchKMeans
 import torch
 
+from infer.lib.audio import clean_path
+
 try:
     import intel_extension_for_pytorch as ipex  # pylint: disable=import-error, unused-import
 
@@ -1048,8 +1050,8 @@ with gr.Blocks(title="RVC WebUI") as app:
                             # )
 
                         input_audio0.change(
-                            fn=lambda: ("", ""),
-                            inputs=[],
+                            fn=lambda x: ("", os.path.splitext(clean_path(x))[0] + " out.npy" if os.path.isfile(os.path.splitext(clean_path(x))[0] + " out.npy") else ""),
+                            inputs=[input_audio0],
                             outputs=[feature_audio_path, f0_npy_path],
                             api_name="input_audio_change",
                         )
