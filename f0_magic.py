@@ -24,7 +24,6 @@ from configs.config import Config
 from infer.modules.vc.utils import load_hubert
 from f0_magic_gen import PitchContourGenerator, segment_size
 from f0_magic_disc import PitchContourDiscriminator 
-from f0_magic_disc import segment_size as segment_size_disc
 
 padding_size = 2 * segment_size
 
@@ -34,7 +33,7 @@ eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 400
+multiplicity_target = 40
 multiplicity_others = 40
 max_offset = round(segment_size / 40)
 min_ratio = 0.5
@@ -191,8 +190,8 @@ def compute_f0_inference(path, index_file=""):
     target_len = x.shape[0] // window_length
     f0_mel = resize_with_zeros(f0_mel, target_len)
 
-    if index_file != "":
-        f0_mel = trim_f0(f0_mel, x, index_file)
+    model_rmvpe = None
+    f0_mel = trim_f0(f0_mel, x, index_file)
 
     f0_mel = trim_sides_mel(f0_mel, frames_per_sec)
 
@@ -201,7 +200,6 @@ def compute_f0_inference(path, index_file=""):
     return f0
 
 
-model_rmvpe = None
 def compute_f0(path):
     print("computing f0 for: " + path)
     x = load_audio(path, 44100)
@@ -448,28 +446,30 @@ def contrastive_loss(output, ref, size):
     right_kernel = kernel[:, :, kernel.shape[2] // 2:].clone()
     right_kernel /= right_kernel.sum()
 
-    threshold = 1.0
-    mask = (F.pad(torch.abs(ref_blurred[:, 1:] - ref_blurred[:, :-1]), (0, 1)) > threshold).float()
-    mask_kernel = gaussian_kernel1d_torch(2)
-    mask_kernel /= mask_kernel.sum()
-    mask = F.conv1d(mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
-
     left_output = F.conv1d(output.unsqueeze(1), left_kernel, padding="same").squeeze(1)
     left_ref = F.conv1d(ref.unsqueeze(1), left_kernel, padding="same").squeeze(1)
     right_output = F.conv1d(output.unsqueeze(1), right_kernel, padding="same").squeeze(1)
     right_ref = F.conv1d(ref.unsqueeze(1), right_kernel, padding="same").squeeze(1)
 
-    left_output *= mask
-    left_ref *= mask
-    right_output *= mask
-    right_ref *= mask
+    threshold = 1.0
+    mid_mask = (F.pad(torch.abs(ref_blurred[:, 1:] - ref_blurred[:, :-1]), (0, 1)) <= threshold).float()
+    left_mask = (F.pad(torch.abs(left_ref[:, 1:] - left_ref[:, :-1]), (0, 1)) <= threshold).float()
+    left_mask[mid_mask > eps] = 0
+    right_mask = (F.pad(torch.abs(right_ref[:, 1:] - right_ref[:, :-1]), (0, 1)) <= threshold).float()
+    right_mask[mid_mask > eps] = 0
+    mask_kernel = gaussian_kernel1d_torch(2)
+    mask_kernel /= mask_kernel.sum()
+    mid_mask = F.conv1d(mid_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1) + eps
+    left_mask = F.conv1d(left_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+    right_mask = F.conv1d(right_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
 
-    left_output = left_output[:, padding_size:-padding_size]
-    left_ref = left_ref[:, padding_size:-padding_size]
-    right_output = right_output[:, padding_size:-padding_size]
-    right_ref = right_ref[:, padding_size:-padding_size]
+    smoothed_output = (left_mask * left_output + right_mask * right_output + mid_mask * output_blurred) / (mid_mask + left_mask + right_mask)
+    smoothed_ref = (left_mask * left_ref + right_mask * right_ref + mid_mask * ref_blurred) / (mid_mask + left_mask + right_mask)
 
-    return F.mse_loss(output_blurred, ref_blurred) + F.mse_loss(left_output, left_ref) + F.mse_loss(right_output, right_ref)
+    smoothed_output = smoothed_output[:, padding_size:-padding_size]
+    smoothed_ref = smoothed_ref[:, padding_size:-padding_size]
+
+    return F.mse_loss(smoothed_output, smoothed_ref)
 
 
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
@@ -562,11 +562,10 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 target_labels = torch.zeros((target_data.shape[0],), device=device)
                 d_data = torch.cat((d_data, target_data), dim=0)
                 d_labels = torch.cat((d_labels, target_labels), dim=0)
-            d_data = d_data[:, (d_data.shape[1] + segment_size_disc) // 2 - segment_size_disc:(d_data.shape[1] + segment_size_disc) // 2]
             outputs = net_d(preprocess(d_data.unsqueeze(1)))
 
             optimizer_d.zero_grad()
-            loss = criterion(outputs, d_labels.unsqueeze(1))
+            loss = criterion(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
             loss.backward()
             optimizer_d.step()
 
@@ -576,11 +575,10 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             if torch.sum(labels < eps) > 0:
                 g_data = fakes[labels < eps]
                 g_labels = torch.ones((g_data.shape[0],), device=device)
-                g_data = g_data[:, (g_data.shape[1] + segment_size_disc) // 2 - segment_size_disc:(g_data.shape[1] + segment_size_disc) // 2]
                 outputs = net_d(preprocess(g_data.unsqueeze(1)))
 
                 loss_total = 0
-                loss = criterion(outputs, g_labels.unsqueeze(1))
+                loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
                 loss_total = loss
                 train_gen_loss += loss.item()
 
@@ -600,21 +598,36 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         if USE_TEST_SET:
             test_contrastive_loss = 0
             test_gen_loss = 0
+            test_disc_loss = 0
             for batch_idx, (data, labels) in enumerate(test_loader):
                 net_d.eval()
                 data, labels = data.to(device), labels.to(device)
                 offset = torch.randint(0, max_offset, (1,))
-                if torch.sum(labels < eps) > 0:
-                    data = data[:, offset:data.shape[1] - max_offset + offset]
+                data = data[:, offset:data.shape[1] - max_offset + offset]
 #                    data_disturbed = data + torch.randn_like(data) * data_noise_amp
-                    fakes = postprocess(net_g(preprocess(data.unsqueeze(1)))).squeeze(1)
-                    fakes[data < eps] = 0
 
+                fakes = postprocess(net_g(preprocess(data.unsqueeze(1)))).squeeze(1)
+#                    fakes[data < eps] = 0
+                d_data = fakes.detach().clone()
+                d_data[labels > eps] = data[labels > eps]
+    #            d_data = d_data + torch.randn_like(d_data) * data_noise_amp
+                d_labels = labels
+    #            d_labels = labels * (1 - label_noise_amp) + torch.rand(size=labels.shape, device=device) * label_noise_amp
+    #            d_labels = torch.zeros((d_data.shape[0],), device=device)
+                if torch.sum(labels > eps) > 0:
+                    target_data = data[labels > eps] + torch.randn_like(data[labels > eps]) * data_noise_amp
+                    target_labels = torch.zeros((target_data.shape[0],), device=device)
+                    d_data = torch.cat((d_data, target_data), dim=0)
+                    d_labels = torch.cat((d_labels, target_labels), dim=0)
+                outputs = net_d(preprocess(d_data.unsqueeze(1)))
+                loss = criterion(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+                test_disc_loss += loss.item()
+
+                if torch.sum(labels < eps) > 0:
                     g_data = fakes[labels < eps]
                     g_labels = torch.ones((g_data.shape[0],), device=device)
-                    g_data = g_data[:, (g_data.shape[1] + segment_size_disc) // 2 - segment_size_disc:(g_data.shape[1] + segment_size_disc) // 2]
                     outputs = net_d(preprocess(g_data.unsqueeze(1)))
-                    loss = criterion(outputs, g_labels.unsqueeze(1))
+                    loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
                     test_gen_loss += loss.item()
 
                     loss = contrastive_loss(fakes, data, gaussian_filter_sigma)
@@ -622,6 +635,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             test_contrastive_loss /= len(test_loader)
             test_gen_loss /= len(test_loader)
+            test_disc_loss /= len(test_loader)
             test_loss = test_contrastive_loss * c_loss_factor + test_gen_loss
 
 
@@ -629,7 +643,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             print(f"Epoch: {epoch:d}")
             print(f"t_loss: {train_loss:.6f} t_loss_c: {train_contrastive_loss:.6f} t_loss_g: {train_gen_loss:.6f} t_loss_d: {train_disc_loss:.8f}")
             if USE_TEST_SET:
-                print(f"v_loss: {test_loss:.6f} v_loss_c: {test_contrastive_loss:.6f} v_loss_g: {test_gen_loss:.6f}")
+                print(f"v_loss: {test_loss:.6f} v_loss_c: {test_contrastive_loss:.6f} v_loss_g: {test_gen_loss:.6f} v_loss_d: {test_disc_loss:.8f}")
             checkpoint = { 
                 'epoch': epoch,
                 'net_g': net_g.state_dict(),

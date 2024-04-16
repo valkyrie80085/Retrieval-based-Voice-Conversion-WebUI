@@ -59,12 +59,7 @@ def clean_path(path_str):
     return path_str.strip(" ").strip('"').strip("\n").strip('"').strip(" ")
 
 
-def extract_features_simple(audio, model, version, device, is_half=False, sr=16000):
-    if sr != 16000:
-        audio = librosa.resample(
-            audio, orig_sr=sr, target_sr=16000
-        )  # , res_type="soxr_vhq"
-
+def extract_features_simple_segment(audio, model, version, device, is_half=False):
     feats = torch.from_numpy(audio)
     if is_half:
         feats = feats.half()
@@ -87,6 +82,33 @@ def extract_features_simple(audio, model, version, device, is_half=False, sr=160
             model.final_proj(logits[0]) if version == "v1" else logits[0]
         )
     return feats
+
+
+def extract_features_simple(audio, model, version, device, is_half=False, sr=16000):
+    if sr != 16000:
+        audio = librosa.resample(
+            audio, orig_sr=sr, target_sr=16000
+        )  # , res_type="soxr_vhq"
+    
+    feats_segments = []
+    block_size = round(60 * sr)
+    max_offset = round(10 * sr)
+    window_length = 160
+    audio_sum = np.zeros((len(audio) - window_length,))
+    for i in range(window_length):
+        audio_sum += np.abs(audio[i:i - window_length])
+    last_split = 0
+    for i in range((len(audio) // block_size) + 1):
+        center = (i + 1) * block_size
+        if center >= len(audio):
+            next_split = len(audio)
+        else:
+            next_split = np.argmin(audio_sum[center - 2 * max_offset:center - max_offset]) + round(center - 1.5 * window_length)
+            next_split = round(next_split / 320) * 320
+        feats_segments.append(extract_features_simple_segment(audio[last_split:min(len(audio), next_split + 160)], model, version, device, is_half))
+        last_split = next_split
+
+    return torch.cat(feats_segments, dim=1)
 
 
 def extract_features_new(audio_original, audio_shifted, model, version, device, is_half=False):
@@ -140,7 +162,7 @@ def extract_features_new(audio_original, audio_shifted, model, version, device, 
     pd_original = get_pd(audio_original, target_len)
     pd_shifted = get_pd(audio_shifted, target_len)
     mask = pd_original * pd_shifted + (1 - pd_original) * (1 - pd_shifted)
-    mask = torch.tensor(mask, device=device).unsqueeze(-1)
+    mask = torch.tensor(mask, device=device).unsqueeze(0)
     if is_half:
         mask = mask.half()
     else:
