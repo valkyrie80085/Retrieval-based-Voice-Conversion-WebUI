@@ -155,14 +155,13 @@ def extract_features_new(audio_original, audio_shifted, model, version, device, 
                 )
         return np.clip((pd - 0.5) / 0.2, 0, 1)
 
-    # Resize the pitch
     target_len = min(feats_original.shape[1], feats_shifted.shape[1])
     feats_original, feats_shifted = feats_original[:, :target_len], feats_shifted[:, :target_len]
 
     pd_original = get_pd(audio_original, target_len)
     pd_shifted = get_pd(audio_shifted, target_len)
     mask = pd_original * pd_shifted + (1 - pd_original) * (1 - pd_shifted)
-    mask = torch.tensor(mask, device=device).unsqueeze(0)
+    mask = torch.tensor(mask, device=device).unsqueeze(-1)
     if is_half:
         mask = mask.half()
     else:
