@@ -426,7 +426,7 @@ def gaussian_kernel1d_torch(sigma, width=None):
         width = round(sigma * 4)
     distance = torch.arange(
         -width, width + 1, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu") 
-    )
+    ).detach()
     gaussian = torch.exp(
         -(distance ** 2) / (2 * sigma ** 2)
     )
@@ -441,9 +441,11 @@ def contrastive_loss(output, ref, size):
     output_blurred = F.conv1d(output.unsqueeze(1), kernel, padding="same").squeeze(1)
     ref_blurred = F.conv1d(ref.unsqueeze(1), kernel, padding="same").squeeze(1)
 
-    left_kernel = kernel[:, :, :kernel.shape[2] // 2 + 1].clone()
+    left_kernel = kernel.clone()
+    left_kernel[:, :, :left_kernel.shape[2] // 2] = 0
     left_kernel /= left_kernel.sum()
-    right_kernel = kernel[:, :, kernel.shape[2] // 2:].clone()
+    right_kernel = kernel.clone()
+    right_kernel[:, :, right_kernel.shape[2] // 2 + 1:] = 0
     right_kernel /= right_kernel.sum()
 
     left_output = F.conv1d(output.unsqueeze(1), left_kernel, padding="same").squeeze(1)
@@ -451,20 +453,28 @@ def contrastive_loss(output, ref, size):
     right_output = F.conv1d(output.unsqueeze(1), right_kernel, padding="same").squeeze(1)
     right_ref = F.conv1d(ref.unsqueeze(1), right_kernel, padding="same").squeeze(1)
 
-    threshold = 1.0
-    mid_mask = (F.pad(torch.abs(ref_blurred[:, 1:] - ref_blurred[:, :-1]), (0, 1)) <= threshold).float()
-    left_mask = (F.pad(torch.abs(left_ref[:, 1:] - left_ref[:, :-1]), (0, 1)) <= threshold).float()
-    left_mask[mid_mask > eps] = 0
-    right_mask = (F.pad(torch.abs(right_ref[:, 1:] - right_ref[:, :-1]), (0, 1)) <= threshold).float()
-    right_mask[mid_mask > eps] = 0
-    mask_kernel = gaussian_kernel1d_torch(2)
-    mask_kernel /= mask_kernel.sum()
-    mid_mask = F.conv1d(mid_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1) + eps
-    left_mask = F.conv1d(left_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
-    right_mask = F.conv1d(right_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
 
-    smoothed_output = (left_mask * left_output + right_mask * right_output + mid_mask * output_blurred) / (mid_mask + left_mask + right_mask)
-    smoothed_ref = (left_mask * left_ref + right_mask * right_ref + mid_mask * ref_blurred) / (mid_mask + left_mask + right_mask)
+    def get_masks(left, right, mid, threshold = 1.0):
+        mid_mask = (F.pad(torch.abs(mid[:, 1:] - mid[:, :-1]), (0, 1)) <= threshold).float().detach()
+        left_mask = (F.pad(torch.abs(left[:, 1:] - left[:, :-1]), (0, 1)) <= threshold).float().detach()
+        left_mask[mid_mask > eps] = 0
+        right_mask = (F.pad(torch.abs(right[:, 1:] - right[:, :-1]), (0, 1)) <= threshold).float().detach()
+        right_mask[mid_mask > eps] = 0
+        mask_kernel = gaussian_kernel1d_torch(2)
+        mask_kernel /= mask_kernel.sum()
+        mid_mask = F.conv1d(mid_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1) + eps
+        left_mask = F.conv1d(left_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+        right_mask = F.conv1d(right_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+        return left_mask, right_mask, mid_mask
+
+
+    left_mask, right_mask, mid_mask = get_masks(left_ref, right_ref, ref_blurred)
+
+#    left_mask, right_mask, mid_mask = get_masks(left_output, right_output, output_blurred)
+    smoothed_output = (left_mask * left_output + right_mask * right_output + mid_mask * output_blurred) / (left_mask + right_mask + mid_mask)
+
+#    left_mask, right_mask, mid_mask = get_masks(left_ref, right_ref, ref_blurred)
+    smoothed_ref = (left_mask * left_ref + right_mask * right_ref + mid_mask * ref_blurred) / (left_mask + right_mask + mid_mask)
 
     smoothed_output = smoothed_output[:, padding_size:-padding_size]
     smoothed_ref = smoothed_ref[:, padding_size:-padding_size]
