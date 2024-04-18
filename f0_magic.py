@@ -66,6 +66,31 @@ def postprocess(x):
     return x_ret
 
 
+def gaussian_kernel1d_torch(sigma, width=None):
+    if width is None:
+        width = round(sigma * 4)
+    distance = torch.arange(
+        -width, width + 1, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu") 
+    ).detach()
+    gaussian = torch.exp(
+        -(distance ** 2) / (2 * sigma ** 2)
+    )
+    gaussian /= gaussian.sum()
+    kernel = gaussian[None, None]
+    return kernel
+
+
+def preprocess_d(x):
+    kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
+    std_d = 80
+    x_blurred = F.conv1d(x, kernel, padding="same")
+    x_sharpened = x - x_blurred
+    x_blurred = (x_blurred - mn) / std
+    x_sharpened = x_sharpened / std_d
+#    x_ret[x < eps] = (2 * mel_min - mel_max - mn) / std
+    return torch.cat((x_blurred, x_sharpened), dim=1)
+
+
 sr = 16000
 window_length = 160
 frames_per_sec = sr // window_length
@@ -421,20 +446,6 @@ def median_filter1d_torch(x, size):
     return torch.median(torch.cat(tuple(x[:, i:x.shape[1] - size + i + 1].unsqueeze(2) for i in range(size)), dim=2), dim=2).values
 
 
-def gaussian_kernel1d_torch(sigma, width=None):
-    if width is None:
-        width = round(sigma * 4)
-    distance = torch.arange(
-        -width, width + 1, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu") 
-    ).detach()
-    gaussian = torch.exp(
-        -(distance ** 2) / (2 * sigma ** 2)
-    )
-    gaussian /= gaussian.sum()
-    kernel = gaussian[None, None]
-    return kernel
-
-
 def contrastive_loss(output, ref, size):
     kernel = gaussian_kernel1d_torch(size)
 
@@ -572,9 +583,10 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 target_labels = torch.zeros((target_data.shape[0],), device=device)
                 d_data = torch.cat((d_data, target_data), dim=0)
                 d_labels = torch.cat((d_labels, target_labels), dim=0)
-            outputs = net_d(preprocess(d_data.unsqueeze(1)))
+            outputs = net_d(preprocess_d(d_data.unsqueeze(1)))
 
             optimizer_d.zero_grad()
+            d_labels[d_labels < eps] = 1e-8
             loss = criterion(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
             loss.backward()
             optimizer_d.step()
@@ -585,7 +597,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             if torch.sum(labels < eps) > 0:
                 g_data = fakes[labels < eps]
                 g_labels = torch.ones((g_data.shape[0],), device=device)
-                outputs = net_d(preprocess(g_data.unsqueeze(1)))
+                outputs = net_d(preprocess_d(g_data.unsqueeze(1)))
 
                 loss_total = 0
                 loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
@@ -629,14 +641,14 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                     target_labels = torch.zeros((target_data.shape[0],), device=device)
                     d_data = torch.cat((d_data, target_data), dim=0)
                     d_labels = torch.cat((d_labels, target_labels), dim=0)
-                outputs = net_d(preprocess(d_data.unsqueeze(1)))
+                outputs = net_d(preprocess_d(d_data.unsqueeze(1)))
                 loss = criterion(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
                 test_disc_loss += loss.item()
 
                 if torch.sum(labels < eps) > 0:
                     g_data = fakes[labels < eps]
                     g_labels = torch.ones((g_data.shape[0],), device=device)
-                    outputs = net_d(preprocess(g_data.unsqueeze(1)))
+                    outputs = net_d(preprocess_d(g_data.unsqueeze(1)))
                     loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
                     test_gen_loss += loss.item()
 
