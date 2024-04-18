@@ -100,10 +100,10 @@ def extract_features_simple(audio, model, version, device, is_half=False, sr=160
     last_split = 0
     for i in range((len(audio) // block_size) + 1):
         center = (i + 1) * block_size
-        if center >= len(audio):
+        if center >= len(audio) - max_offset:
             next_split = len(audio)
         else:
-            next_split = np.argmin(audio_sum[center - 2 * max_offset:center - max_offset]) + round(center - 1.5 * window_length)
+            next_split = np.argmin(audio_sum[center - max_offset - window_length:center - window_length]) + round(center - max_offset - 0.5 * window_length)
             next_split = round(next_split / 320) * 320
         feats_segments.append(extract_features_simple_segment(audio[last_split:min(len(audio), next_split + 160)], model, version, device, is_half))
         last_split = next_split

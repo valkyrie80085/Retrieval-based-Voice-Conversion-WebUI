@@ -21,7 +21,7 @@ from scipy import signal
 
 from pyloudnorm.iirfilter import IIRfilter
 
-from infer.lib.audio import extract_features_simple
+from infer.lib.audio import extract_features_simple, extract_features_simple_segment
 
 now_dir = os.getcwd()
 sys.path.append(now_dir)
@@ -253,7 +253,7 @@ class Pipeline(object):
         feature_override=None,
     ):  # ,file_index,file_big_npy
         t0 = ttime()
-        feats = extract_features_simple(audio0, model=model, version=version, device=self.device, is_half=self.is_half)
+        feats = extract_features_simple_segment(audio0, model=model, version=version, device=self.device, is_half=self.is_half)
         if pitch is not None and pitchf is not None:
             feats0 = feats.clone()
             feats_indexed = feats.clone()
