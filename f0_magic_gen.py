@@ -3,11 +3,11 @@ import torch.nn as nn
 from torch.nn import functional as F
 import torch.optim as optim
 
-segment_size = 1215
-channels = [32, 64, 128, 256, 512, 1024]
-kernel_size_conv = [5, 5, 5, 5, 5]
-kernel_size_pool = [3, 3, 3, 3, 3]
-bridge_width = 5
+segment_size = 2187
+channels = [32, 64, 128, 256, 512, 1024, 1024]
+kernel_size_conv = [5, 5, 5, 5, 5, 5]
+kernel_size_pool = [3, 3, 3, 3, 3, 3]
+bridge_width = 3
 class PitchContourGenerator(nn.Module):
     def __init__(self):
         super(PitchContourGenerator, self).__init__()

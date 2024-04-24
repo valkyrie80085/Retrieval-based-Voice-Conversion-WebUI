@@ -49,14 +49,6 @@ lr_g = 1e-5
 lr_d = 1e-5
 c_loss_factor = 1
 
-mn = 550
-std = 120
-def preprocess(x):
-    x_ret = x.clone()
-    x_ret = (x_ret - mn) / std
-#    x_ret[x < eps] = (2 * mel_min - mel_max - mn) / std
-    return x_ret
-
 
 def postprocess(x):
     x_ret = x.clone()
@@ -78,6 +70,60 @@ def gaussian_kernel1d_torch(sigma, width=None):
     gaussian /= gaussian.sum()
     kernel = gaussian[None, None]
     return kernel
+
+
+def get_masks(left, right, mid, threshold = 1.0):
+    mid_mask = (F.pad(torch.abs(mid[:, 1:] - mid[:, :-1]), (0, 1)) <= threshold).float().detach()
+    left_mask = (F.pad(torch.abs(left[:, 1:] - left[:, :-1]), (0, 1)) <= threshold).float().detach()
+    left_mask[mid_mask > eps] = 0
+    right_mask = (F.pad(torch.abs(right[:, 1:] - right[:, :-1]), (0, 1)) <= threshold).float().detach()
+    right_mask[mid_mask > eps] = 0
+    mask_kernel = gaussian_kernel1d_torch(2)
+    mask_kernel /= mask_kernel.sum()
+    mid_mask = F.conv1d(mid_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1) + eps
+    left_mask = F.conv1d(left_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+    right_mask = F.conv1d(right_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+    return left_mask, right_mask, mid_mask
+
+
+mn = 550
+std = 120
+def preprocess(x):
+#    x_ret = x.clone()
+#    x_ret = (x_ret - mn) / std
+#    return x_ret
+
+    x = x.squeeze(1)
+    x_ones = torch.zeros_like(x)
+    x_ones[x > eps] = 1
+
+    kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
+
+    mid = F.conv1d(x.unsqueeze(1), kernel, padding="same").squeeze(1)
+    mid_ones = F.conv1d(x_ones.unsqueeze(1), kernel, padding="same").squeeze(1)
+
+    left_kernel = kernel.clone()
+    left_kernel[:, :, :left_kernel.shape[2] // 2] = 0
+    left_kernel /= left_kernel.sum()
+    right_kernel = kernel.clone()
+    right_kernel[:, :, right_kernel.shape[2] // 2 + 1:] = 0
+    right_kernel /= right_kernel.sum()
+
+    left = F.conv1d(x.unsqueeze(1), left_kernel, padding="same").squeeze(1)
+    left_ones = F.conv1d(x_ones.unsqueeze(1), left_kernel, padding="same").squeeze(1)
+    right = F.conv1d(x.unsqueeze(1), right_kernel, padding="same").squeeze(1)
+    right_ones = F.conv1d(x_ones.unsqueeze(1), right_kernel, padding="same").squeeze(1)
+
+    left_mask, right_mask, mid_mask = get_masks(left, right, mid)
+    x_smoothed = (left_mask * left + right_mask * right + mid_mask * mid) / (left_mask + right_mask + mid_mask)
+    ones_smoothed = (left_mask * left_ones + right_mask * right_ones + mid_mask * mid_ones) / (left_mask + right_mask + mid_mask)
+
+    x_ret = torch.zeros_like(x_smoothed)
+    x_ret[x > eps] = x_smoothed[x > eps] / ones_smoothed[x > eps]
+
+    x_ret = (x_ret - mn) / std
+#    x_ret[x < eps] = (2 * mel_min - mel_max - mn) / std
+    return x_ret.unsqueeze(1)
 
 
 def preprocess_d(x):
@@ -449,8 +495,8 @@ def median_filter1d_torch(x, size):
 def contrastive_loss(output, ref, size):
     kernel = gaussian_kernel1d_torch(size)
 
-    output_blurred = F.conv1d(output.unsqueeze(1), kernel, padding="same").squeeze(1)
-    ref_blurred = F.conv1d(ref.unsqueeze(1), kernel, padding="same").squeeze(1)
+    mid_output = F.conv1d(output.unsqueeze(1), kernel, padding="same").squeeze(1)
+    mid_ref = F.conv1d(ref.unsqueeze(1), kernel, padding="same").squeeze(1)
 
     left_kernel = kernel.clone()
     left_kernel[:, :, :left_kernel.shape[2] // 2] = 0
@@ -464,33 +510,18 @@ def contrastive_loss(output, ref, size):
     right_output = F.conv1d(output.unsqueeze(1), right_kernel, padding="same").squeeze(1)
     right_ref = F.conv1d(ref.unsqueeze(1), right_kernel, padding="same").squeeze(1)
 
+    left_mask, right_mask, mid_mask = get_masks(left_ref, right_ref, mid_ref)
 
-    def get_masks(left, right, mid, threshold = 1.0):
-        mid_mask = (F.pad(torch.abs(mid[:, 1:] - mid[:, :-1]), (0, 1)) <= threshold).float().detach()
-        left_mask = (F.pad(torch.abs(left[:, 1:] - left[:, :-1]), (0, 1)) <= threshold).float().detach()
-        left_mask[mid_mask > eps] = 0
-        right_mask = (F.pad(torch.abs(right[:, 1:] - right[:, :-1]), (0, 1)) <= threshold).float().detach()
-        right_mask[mid_mask > eps] = 0
-        mask_kernel = gaussian_kernel1d_torch(2)
-        mask_kernel /= mask_kernel.sum()
-        mid_mask = F.conv1d(mid_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1) + eps
-        left_mask = F.conv1d(left_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
-        right_mask = F.conv1d(right_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
-        return left_mask, right_mask, mid_mask
+#    left_mask, right_mask, mid_mask = get_masks(left_output, right_output, mid_output)
+    output_smoothed = (left_mask * left_output + right_mask * right_output + mid_mask * mid_output) / (left_mask + right_mask + mid_mask)
 
+#    left_mask, right_mask, mid_mask = get_masks(left_ref, right_ref, mid_ref)
+    ref_smoothed = (left_mask * left_ref + right_mask * right_ref + mid_mask * mid_ref) / (left_mask + right_mask + mid_mask)
 
-    left_mask, right_mask, mid_mask = get_masks(left_ref, right_ref, ref_blurred)
+    output_smoothed = output_smoothed[:, padding_size:-padding_size]
+    ref_smoothed = ref_smoothed[:, padding_size:-padding_size]
 
-#    left_mask, right_mask, mid_mask = get_masks(left_output, right_output, output_blurred)
-    smoothed_output = (left_mask * left_output + right_mask * right_output + mid_mask * output_blurred) / (left_mask + right_mask + mid_mask)
-
-#    left_mask, right_mask, mid_mask = get_masks(left_ref, right_ref, ref_blurred)
-    smoothed_ref = (left_mask * left_ref + right_mask * right_ref + mid_mask * ref_blurred) / (left_mask + right_mask + mid_mask)
-
-    smoothed_output = smoothed_output[:, padding_size:-padding_size]
-    smoothed_ref = smoothed_ref[:, padding_size:-padding_size]
-
-    return F.mse_loss(smoothed_output, smoothed_ref)
+    return F.mse_loss(output_smoothed, ref_smoothed)
 
 
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
@@ -573,16 +604,20 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             fakes = postprocess(net_g(preprocess(data.unsqueeze(1)))).squeeze(1)
 #            fakes[data < eps] = 0
             d_data = fakes.detach().clone()
-            d_data[labels > eps] = data[labels > eps]
 #            d_data = d_data + torch.randn_like(d_data) * data_noise_amp
-            d_labels = labels
 #            d_labels = labels * (1 - label_noise_amp) + torch.rand(size=labels.shape, device=device) * label_noise_amp
-#            d_labels = torch.zeros((d_data.shape[0],), device=device)
+            d_labels = torch.zeros((d_data.shape[0],), device=device)
             if torch.sum(labels > eps) > 0:
                 target_data = data[labels > eps] + torch.randn_like(data[labels > eps]) * data_noise_amp
                 target_labels = torch.zeros((target_data.shape[0],), device=device)
                 d_data = torch.cat((d_data, target_data), dim=0)
                 d_labels = torch.cat((d_labels, target_labels), dim=0)
+
+                target_data = data[labels > eps]
+                target_labels = torch.ones((target_data.shape[0],), device=device)
+                d_data = torch.cat((d_data, target_data), dim=0)
+                d_labels = torch.cat((d_labels, target_labels), dim=0)
+
             outputs = net_d(preprocess_d(d_data.unsqueeze(1)))
 
             optimizer_d.zero_grad()
@@ -594,23 +629,23 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             train_disc_loss += loss.item()
 
             net_d.eval()
-            if torch.sum(labels < eps) > 0:
-                g_data = fakes[labels < eps]
-                g_labels = torch.ones((g_data.shape[0],), device=device)
-                outputs = net_d(preprocess_d(g_data.unsqueeze(1)))
 
-                loss_total = 0
-                loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
-                loss_total = loss
-                train_gen_loss += loss.item()
+            g_data = fakes
+            g_labels = torch.ones((g_data.shape[0],), device=device)
+            outputs = net_d(preprocess_d(g_data.unsqueeze(1)))
 
-                loss = contrastive_loss(fakes, data, gaussian_filter_sigma)
-                loss_total += loss * c_loss_factor
-                train_contrastive_loss += loss.item()
+            loss_total = 0
+            loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+            loss_total = loss
+            train_gen_loss += loss.item()
 
-                optimizer_g.zero_grad()
-                loss_total.backward()
-                optimizer_g.step()
+            loss = contrastive_loss(fakes, data, gaussian_filter_sigma)
+            loss_total += loss * c_loss_factor
+            train_contrastive_loss += loss.item()
+
+            optimizer_g.zero_grad()
+            loss_total.backward()
+            optimizer_g.step()
 
         train_disc_loss /= len(train_loader)
         train_contrastive_loss /= len(train_loader)
@@ -631,29 +666,34 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 fakes = postprocess(net_g(preprocess(data.unsqueeze(1)))).squeeze(1)
 #                    fakes[data < eps] = 0
                 d_data = fakes.detach().clone()
-                d_data[labels > eps] = data[labels > eps]
+#                d_data[labels > eps] = data[labels > eps]
     #            d_data = d_data + torch.randn_like(d_data) * data_noise_amp
-                d_labels = labels
+#                d_labels = labels
     #            d_labels = labels * (1 - label_noise_amp) + torch.rand(size=labels.shape, device=device) * label_noise_amp
-    #            d_labels = torch.zeros((d_data.shape[0],), device=device)
+                d_labels = torch.zeros((d_data.shape[0],), device=device)
                 if torch.sum(labels > eps) > 0:
                     target_data = data[labels > eps] + torch.randn_like(data[labels > eps]) * data_noise_amp
                     target_labels = torch.zeros((target_data.shape[0],), device=device)
                     d_data = torch.cat((d_data, target_data), dim=0)
                     d_labels = torch.cat((d_labels, target_labels), dim=0)
+
+                    target_data = data[labels > eps]
+                    target_labels = torch.ones((target_data.shape[0],), device=device)
+                    d_data = torch.cat((d_data, target_data), dim=0)
+                    d_labels = torch.cat((d_labels, target_labels), dim=0)
+
                 outputs = net_d(preprocess_d(d_data.unsqueeze(1)))
                 loss = criterion(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
                 test_disc_loss += loss.item()
 
-                if torch.sum(labels < eps) > 0:
-                    g_data = fakes[labels < eps]
-                    g_labels = torch.ones((g_data.shape[0],), device=device)
-                    outputs = net_d(preprocess_d(g_data.unsqueeze(1)))
-                    loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
-                    test_gen_loss += loss.item()
+                g_data = fakes
+                g_labels = torch.ones((g_data.shape[0],), device=device)
+                outputs = net_d(preprocess_d(g_data.unsqueeze(1)))
+                loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+                test_gen_loss += loss.item()
 
-                    loss = contrastive_loss(fakes, data, gaussian_filter_sigma)
-                    test_contrastive_loss += loss.item()
+                loss = contrastive_loss(fakes, data, gaussian_filter_sigma)
+                test_contrastive_loss += loss.item()
 
             test_contrastive_loss /= len(test_loader)
             test_gen_loss /= len(test_loader)
