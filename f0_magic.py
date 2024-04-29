@@ -42,8 +42,8 @@ gaussian_filter_sigma = 8
 data_noise_amp = 5
 label_noise_amp = 0.1
 
-USE_TEST_SET = True
-EPOCH_PER_BAK = 25
+USE_TEST_SET = False
+EPOCH_PER_BAK = 5
 
 lr_g = 1e-5
 lr_d = 1e-5
@@ -86,21 +86,11 @@ def get_masks(left, right, mid, threshold = 1.0):
     return left_mask, right_mask, mid_mask
 
 
-mn = 550
-std = 120
-def preprocess(x):
-#    x_ret = x.clone()
-#    x_ret = (x_ret - mn) / std
-#    return x_ret
-
-    x = x.squeeze(1)
-    x_ones = torch.zeros_like(x)
-    x_ones[x > eps] = 1
-
-    kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
+def smooth(x, size, extras):
+    kernel = gaussian_kernel1d_torch(size)
 
     mid = F.conv1d(x.unsqueeze(1), kernel, padding="same").squeeze(1)
-    mid_ones = F.conv1d(x_ones.unsqueeze(1), kernel, padding="same").squeeze(1)
+    mid_extras = [F.conv1d(extra.unsqueeze(1), kernel, padding="same").squeeze(1) for extra in extras]
 
     left_kernel = kernel.clone()
     left_kernel[:, :, :left_kernel.shape[2] // 2] = 0
@@ -110,13 +100,35 @@ def preprocess(x):
     right_kernel /= right_kernel.sum()
 
     left = F.conv1d(x.unsqueeze(1), left_kernel, padding="same").squeeze(1)
-    left_ones = F.conv1d(x_ones.unsqueeze(1), left_kernel, padding="same").squeeze(1)
+    left_extras = [F.conv1d(extra.unsqueeze(1), left_kernel, padding="same").squeeze(1) for extra in extras]
     right = F.conv1d(x.unsqueeze(1), right_kernel, padding="same").squeeze(1)
-    right_ones = F.conv1d(x_ones.unsqueeze(1), right_kernel, padding="same").squeeze(1)
+    right_extras = [F.conv1d(extra.unsqueeze(1), right_kernel, padding="same").squeeze(1) for extra in extras]
 
     left_mask, right_mask, mid_mask = get_masks(left, right, mid)
     x_smoothed = (left_mask * left + right_mask * right + mid_mask * mid) / (left_mask + right_mask + mid_mask)
-    ones_smoothed = (left_mask * left_ones + right_mask * right_ones + mid_mask * mid_ones) / (left_mask + right_mask + mid_mask)
+    extras_smoothed = [(left_mask * left_extra + right_mask * right_extra + mid_mask * mid_extra) / (left_mask + right_mask + mid_mask) for (left_extra, right_extra, mid_extra) in zip(left_extras, right_extras, mid_extras)]
+    return x_smoothed, extras_smoothed
+
+
+mn = 550
+std = 120
+def preprocess(x):
+    x = x.squeeze(1)
+    x_ones = torch.zeros_like(x)
+    x_ones[x > eps] = 1
+
+    x_scale8, ones_scale8 = smooth(x, 8, [x_ones])
+    x_scale4, ones_scale4 = smooth(x, 4, [x_ones])
+
+    ones_scale8 = ones_scale8[0]
+    ones_scale4 = ones_scale4[0]
+
+    mask = (F.pad(torch.abs(x_scale8[:, 1:] - x_scale8[:, :-1]), (0, 1)) <= 1.0).float().detach()
+    mask_kernel = gaussian_kernel1d_torch(2)
+    mask_kernel /= mask_kernel.sum()
+    mask = F.conv1d(mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+    x_smoothed = x_scale8 * mask + x_scale4 * (1 - mask)
+    ones_smoothed = ones_scale8 * mask + ones_scale4 * (1 - mask)
 
     x_ret = torch.zeros_like(x_smoothed)
     x_ret[x > eps] = x_smoothed[x > eps] / ones_smoothed[x > eps]
@@ -493,30 +505,18 @@ def median_filter1d_torch(x, size):
 
 
 def contrastive_loss(output, ref, size):
-    kernel = gaussian_kernel1d_torch(size)
+    ref_scale8, output_scale8 = smooth(ref, 8, [output])
+    ref_scale4, output_scale4 = smooth(ref, 4, [output])
 
-    mid_output = F.conv1d(output.unsqueeze(1), kernel, padding="same").squeeze(1)
-    mid_ref = F.conv1d(ref.unsqueeze(1), kernel, padding="same").squeeze(1)
+    output_scale8 = output_scale8[0]
+    output_scale4 = output_scale4[0]
 
-    left_kernel = kernel.clone()
-    left_kernel[:, :, :left_kernel.shape[2] // 2] = 0
-    left_kernel /= left_kernel.sum()
-    right_kernel = kernel.clone()
-    right_kernel[:, :, right_kernel.shape[2] // 2 + 1:] = 0
-    right_kernel /= right_kernel.sum()
-
-    left_output = F.conv1d(output.unsqueeze(1), left_kernel, padding="same").squeeze(1)
-    left_ref = F.conv1d(ref.unsqueeze(1), left_kernel, padding="same").squeeze(1)
-    right_output = F.conv1d(output.unsqueeze(1), right_kernel, padding="same").squeeze(1)
-    right_ref = F.conv1d(ref.unsqueeze(1), right_kernel, padding="same").squeeze(1)
-
-    left_mask, right_mask, mid_mask = get_masks(left_ref, right_ref, mid_ref)
-
-#    left_mask, right_mask, mid_mask = get_masks(left_output, right_output, mid_output)
-    output_smoothed = (left_mask * left_output + right_mask * right_output + mid_mask * mid_output) / (left_mask + right_mask + mid_mask)
-
-#    left_mask, right_mask, mid_mask = get_masks(left_ref, right_ref, mid_ref)
-    ref_smoothed = (left_mask * left_ref + right_mask * right_ref + mid_mask * mid_ref) / (left_mask + right_mask + mid_mask)
+    mask = (F.pad(torch.abs(ref_scale8[:, 1:] - ref_scale8[:, :-1]), (0, 1)) <= 1.0).float().detach()
+    mask_kernel = gaussian_kernel1d_torch(2)
+    mask_kernel /= mask_kernel.sum()
+    mask = F.conv1d(mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+    ref_smoothed = ref_scale8 * mask + ref_scale4 * (1 - mask)
+    output_smoothed = output_scale8 * mask + output_scale4 * (1 - mask)
 
     output_smoothed = output_smoothed[:, padding_size:-padding_size]
     ref_smoothed = ref_smoothed[:, padding_size:-padding_size]

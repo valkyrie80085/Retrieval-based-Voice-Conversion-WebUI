@@ -44,9 +44,6 @@ output_file = os.path.splitext(input_file)[0] + " out.npy"
 #input_contour = np.load("input.npy")
 input_contour = np.load(input_file)
 input_contour_mel = 1127 * np.log(1 + input_contour / 700) 
-#for i in range(24300, 24400):
-#    print(input_contour_mel[i])
-#exit(1)
 #input_contour_mel = np.round(input_contour_mel / 10) * 10
 #length = len(input_contour_mel)
 #input_contour_mel = resize_with_zeros(input_contour_mel, length // 3)
