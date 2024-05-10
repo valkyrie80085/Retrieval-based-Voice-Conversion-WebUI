@@ -6,6 +6,7 @@ from scipy.ndimage import median_filter
 from f0_magic import compute_f0_inference, pitch_invert_mel, pitch_shift_mel#, noise_amp
 from f0_magic import postprocess, preprocess, padding_size
 from f0_magic_gen import PitchContourGenerator, segment_size
+from f0_magic import snap
 
 import random
 import os
@@ -13,6 +14,7 @@ import json
 
 from infer.lib.audio import pitch_blur
 
+torch.manual_seed(42)
 random.seed(42)
 eps = 1e-3
 
@@ -26,6 +28,10 @@ with open('f0_test_config.json', 'r') as openfile:
         invert_axis = data["invert_axis"]
     except:
         invert_axis = ""
+    try:
+        snap_sensitivity = float(data["snap_sensitivity"])
+    except:
+        snap_sensitivity = None
     if not invert_axis:
         invert_axis = None
 if not model_path.endswith(".pt"):
@@ -56,6 +62,8 @@ extra = segment_size - ((len(modified_contour_mel) - 1) % segment_size + 1)
 modified_contour_mel = np.pad(modified_contour_mel, (extra, 0))
 modified_contour_mel_tensor = torch.tensor(modified_contour_mel, dtype=torch.float32, device="cuda")
 #modified_contour_mel_tensor += torch.randn_like(modified_contour_mel_tensor) * noise_amp
+#if snap_sensitivity is not None:
+    #    modified_contour_mel_tensor = snap(modified_contour_mel_tensor, snap_sensitivity)
 modified_contour_mel_tensor = postprocess(model(preprocess(modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0)))).squeeze(0).squeeze(0)
 modified_contour_mel = modified_contour_mel_tensor.detach().cpu().numpy()
 modified_contour_mel = modified_contour_mel[extra:]

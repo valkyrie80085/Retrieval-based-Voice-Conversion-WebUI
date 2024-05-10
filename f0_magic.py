@@ -72,21 +72,22 @@ def gaussian_kernel1d_torch(sigma, width=None):
     return kernel
 
 
-def get_masks(left, right, mid, threshold = 1.0):
+def get_masks(left, right, mid, threshold=1.0, blur_mask=True):
     mid_mask = (F.pad(torch.abs(mid[:, 1:] - mid[:, :-1]), (0, 1)) <= threshold).float().detach()
     left_mask = (F.pad(torch.abs(left[:, 1:] - left[:, :-1]), (0, 1)) <= threshold).float().detach()
     left_mask[mid_mask > eps] = 0
     right_mask = (F.pad(torch.abs(right[:, 1:] - right[:, :-1]), (0, 1)) <= threshold).float().detach()
     right_mask[mid_mask > eps] = 0
-    mask_kernel = gaussian_kernel1d_torch(2)
-    mask_kernel /= mask_kernel.sum()
-    mid_mask = F.conv1d(mid_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1) + eps
-    left_mask = F.conv1d(left_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
-    right_mask = F.conv1d(right_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+    if blur_mask:
+        mask_kernel = gaussian_kernel1d_torch(2)
+        mask_kernel /= mask_kernel.sum()
+        mid_mask = F.conv1d(mid_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1) + eps
+        left_mask = F.conv1d(left_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+        right_mask = F.conv1d(right_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
     return left_mask, right_mask, mid_mask
 
 
-def smooth(x, size, extras):
+def smooth_simple(x, size, extras, threshold=1.0, blur_mask=True):
     kernel = gaussian_kernel1d_torch(size)
 
     mid = F.conv1d(x.unsqueeze(1), kernel, padding="same").squeeze(1)
@@ -104,38 +105,78 @@ def smooth(x, size, extras):
     right = F.conv1d(x.unsqueeze(1), right_kernel, padding="same").squeeze(1)
     right_extras = [F.conv1d(extra.unsqueeze(1), right_kernel, padding="same").squeeze(1) for extra in extras]
 
-    left_mask, right_mask, mid_mask = get_masks(left, right, mid)
+    left_mask, right_mask, mid_mask = get_masks(left, right, mid, threshold=threshold, blur_mask=blur_mask)
     x_smoothed = (left_mask * left + right_mask * right + mid_mask * mid) / (left_mask + right_mask + mid_mask)
     extras_smoothed = [(left_mask * left_extra + right_mask * right_extra + mid_mask * mid_extra) / (left_mask + right_mask + mid_mask) for (left_extra, right_extra, mid_extra) in zip(left_extras, right_extras, mid_extras)]
     return x_smoothed, extras_smoothed
 
 
-mn = 550
-std = 120
-def preprocess(x):
-    x = x.squeeze(1)
+def smooth(x, threshold=1.0, blur_mask=True):
     x_ones = torch.zeros_like(x)
     x_ones[x > eps] = 1
 
-    x_scale8, ones_scale8 = smooth(x, 8, [x_ones])
-    x_scale4, ones_scale4 = smooth(x, 4, [x_ones])
+    x_scale8, ones_scale8 = smooth_simple(x, 8, [x_ones], threshold=threshold)
+#    x_scale4, ones_scale4 = smooth_simple(x, 4, [x_ones])
+    x_scale4, ones_scale4 = x.clone(), [x_ones.clone()]
 
     ones_scale8 = ones_scale8[0]
     ones_scale4 = ones_scale4[0]
 
-    mask = (F.pad(torch.abs(x_scale8[:, 1:] - x_scale8[:, :-1]), (0, 1)) <= 1.0).float().detach()
-    mask_kernel = gaussian_kernel1d_torch(2)
-    mask_kernel /= mask_kernel.sum()
-    mask = F.conv1d(mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+    window_size = 12
+    x_max, x_min = x_scale8[:, :-window_size].clone(), x_scale8[:, :-window_size].clone()
+    for i in range(window_size):
+        x_max = torch.maximum(x_max, x_scale8[:, window_size - i:x_scale8.shape[1] - i])
+        x_min = torch.minimum(x_min, x_scale8[:, window_size - i:x_scale8.shape[1] - i])
+    x_max_hz = (torch.exp(x_max / 1127) - 1) * 700
+    x_min_hz = (torch.exp(x_min / 1127) - 1) * 700
+    x_diff = torch.log2(x_max_hz) - torch.log2(x_min_hz)
+    threshold_diff = 1 / 25
+
+    mask = torch.logical_or(F.pad(x_diff, (0, window_size)) <= threshold_diff, F.pad(x_diff, (window_size, 0)) <= threshold_diff).float().detach()
+    if blur_mask:
+        mask_kernel = gaussian_kernel1d_torch(2)
+        mask_kernel /= mask_kernel.sum()
+        mask = F.conv1d(mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
     x_smoothed = x_scale8 * mask + x_scale4 * (1 - mask)
     ones_smoothed = ones_scale8 * mask + ones_scale4 * (1 - mask)
 
     x_ret = torch.zeros_like(x_smoothed)
     x_ret[x > eps] = x_smoothed[x > eps] / ones_smoothed[x > eps]
+    return x_ret
 
+
+def snap_helper(x, sensitivity):
+    x_semitone = torch.log2(x / 440) * 12
+    x_semitone_rounded = torch.floor(x_semitone)
+    x_semitone_remainder = x_semitone - x_semitone_rounded
+    x_semitone_remainder_snapped = torch.sin(torch.clip(x_semitone_remainder - 0.5, -(1 - sensitivity) / 2, (1 - sensitivity) / 2) * (math.pi / (1 - sensitivity))) / 2 + 0.5
+    x_semitone_snapped = x_semitone_rounded + x_semitone_remainder_snapped
+    x_snapped = torch.pow(2, x_semitone_snapped / 12) * 440
+    x_snapped[x < eps] = 0
+    return x_snapped
+
+
+def snap(x, sensitivity):
+    x = smooth(x.unsqueeze(0)).squeeze(0)
+    x_hz = (torch.exp(x / 1127) - 1) * 700
+    x_snapped_hz = snap_helper(x_hz, sensitivity)
+    x_snapped = 1127 * torch.log(1 + x_snapped_hz / 700) 
+    x_snapped[x < eps] = 0
+    return x_snapped
+
+
+mn = 550
+std = 120
+def preprocess(x):
+    x_ret = smooth(x.squeeze(1), threshold=1.0, blur_mask=False).unsqueeze(1)
+    x_ret = x_ret + torch.randn_like(x_ret) * 10
+#    x_ret_hz = (torch.exp(x_ret / 1127) - 1) * 700
+#    x_ret_hz = x_ret_hz * torch.pow(2, torch.randn_like(x_ret_hz) / 24)
+#    x_ret = 1127 * torch.log(1 + x_ret_hz / 700) 
+#    x_ret[x < eps] = 0
     x_ret = (x_ret - mn) / std
 #    x_ret[x < eps] = (2 * mel_min - mel_max - mn) / std
-    return x_ret.unsqueeze(1)
+    return x_ret
 
 
 def preprocess_d(x):
@@ -505,8 +546,8 @@ def median_filter1d_torch(x, size):
 
 
 def contrastive_loss(output, ref, size):
-    ref_scale8, output_scale8 = smooth(ref, 8, [output])
-    ref_scale4, output_scale4 = smooth(ref, 4, [output])
+    ref_scale8, output_scale8 = smooth_simple(ref, 8, [output])
+    ref_scale4, output_scale4 = smooth_simple(ref, 4, [output])
 
     output_scale8 = output_scale8[0]
     output_scale4 = output_scale4[0]

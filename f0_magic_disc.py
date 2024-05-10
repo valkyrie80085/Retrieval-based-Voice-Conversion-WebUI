@@ -11,9 +11,10 @@ kernel_size_conv = [5, 5, 5, 5, 5]
 kernel_size_pool = [3, 3, 3, 3, 3]
 fc_width = [3, 7, 3, 9, 5, 2]
 class PitchContourDiscriminatorP(nn.Module):
-    def __init__(self, p):
+    def __init__(self, p, t):
         super(PitchContourDiscriminatorP, self).__init__()
         self.p = p
+        self.t = t
         self.convs = nn.ModuleList([])
         self.pools = nn.ModuleList([])
         for i in range(depth[self.p]):
@@ -28,7 +29,8 @@ class PitchContourDiscriminatorP(nn.Module):
     def forward(self, x):
         x = x[:, :, (x.shape[2] + segment_size[self.p]) // 2 - segment_size[self.p]:(x.shape[2] + segment_size[self.p]) // 2]
         x = x.view(x.shape[0], x.shape[1], -1, periods[self.p])
-        x = torch.transpose(x, 2, 3)
+        if self.t:
+            x = torch.transpose(x, 2, 3)
         x = torch.transpose(x, 1, 2)
         x = x.reshape(x.shape[0] * periods[self.p], x.shape[2], -1)
         for i in range(depth[self.p]):
@@ -48,7 +50,9 @@ class PitchContourDiscriminator(nn.Module):
         super(PitchContourDiscriminator, self).__init__()
         self.discs = nn.ModuleList([])
         for i in range(len(periods)):
-            self.discs.append(PitchContourDiscriminatorP(i))
+            self.discs.append(PitchContourDiscriminatorP(i, False))
+            if periods[i] > 1:
+                self.discs.append(PitchContourDiscriminatorP(i, True))
 
 
     def forward(self, x):

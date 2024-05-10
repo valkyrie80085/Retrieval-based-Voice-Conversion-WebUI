@@ -97,7 +97,8 @@ def extract_features_simple(audio, model, version, device, is_half=False, sr=160
     for i in range(window_length):
         audio_sum += np.abs(audio[i:i - window_length])
     last_split = 0
-    for i in range((len(audio) // block_size) + 1):
+    i = 0
+    while True:
         center = (i + 1) * block_size
         if center >= len(audio) - max_offset:
             next_split = len(audio)
@@ -105,7 +106,11 @@ def extract_features_simple(audio, model, version, device, is_half=False, sr=160
             next_split = np.argmin(audio_sum[center - max_offset - window_length:center - window_length]) + round(center - max_offset - 0.5 * window_length)
             next_split = round(next_split / 320) * 320
         feats_segments.append(extract_features_simple_segment(audio[last_split:min(len(audio), next_split + 160)], model, version, device, is_half))
-        last_split = next_split
+        if next_split == len(audio):
+            break
+        else:
+            last_split = next_split
+            i += 1
 
     return torch.cat(feats_segments, dim=1)
 
