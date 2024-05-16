@@ -40,3 +40,4 @@ ffprobe.*
 /f0_magic/
 *.pt
 f0_test_config.json
+*.log
