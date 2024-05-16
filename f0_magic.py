@@ -35,10 +35,11 @@ mel_max = 1127 * math.log(1 + 1100 / 700)
 
 multiplicity_target = 40
 multiplicity_others = 40
-max_offset = round(segment_size / 40)
-min_ratio = 0.5
+max_offset = round(segment_size / 10)
+min_ratio = 0.55
 median_filter_size = 17
 gaussian_filter_sigma = 8
+preprocess_noise_amp = 10
 data_noise_amp = 5
 label_noise_amp = 0.1
 
@@ -48,6 +49,17 @@ EPOCH_PER_BAK = 5
 lr_g = 1e-5
 lr_d = 1e-5
 c_loss_factor = 1
+
+
+def f0_magic_log(s):
+    while True:
+        try:
+            with open("f0_magic.log", "a") as f:
+                print(s, file=f)
+            break
+        except:
+            pass
+    print(s)
 
 
 def postprocess(x):
@@ -169,7 +181,7 @@ mn = 550
 std = 120
 def preprocess(x):
     x_ret = smooth(x.squeeze(1), threshold=1.0, blur_mask=False).unsqueeze(1)
-    x_ret = x_ret + torch.randn_like(x_ret) * 10
+    x_ret = x_ret + torch.randn_like(x_ret) * preprocess_noise_amp
 #    x_ret_hz = (torch.exp(x_ret / 1127) - 1) * 700
 #    x_ret_hz = x_ret_hz * torch.pow(2, torch.randn_like(x_ret_hz) / 24)
 #    x_ret = 1127 * torch.log(1 + x_ret_hz / 700) 
@@ -410,19 +422,27 @@ def prepare_data():
 
 
 def pitch_shift_mel(contour, semitones):
-    contour = (np.exp(contour / 1127) - 1) * 700
-    contour *= 2 ** (semitones / 12)
-    contour = 1127 * np.log(1 + contour / 700)
-    contour[contour < eps] = 0
-    return contour
+    contour_shifted = (np.exp(contour / 1127) - 1)
+    contour_shifted *= 2 ** (semitones / 12)
+    contour_shifted = 1127 * np.log(1 + contour_shifted)
+    contour_shifted[contour < eps] = 0
+    return contour_shifted
+
+
+def pitch_shift_tensor(contour, semitones):
+    contour_shifted = (torch.exp(contour / 1127) - 1)
+    contour_shifted *= 2 ** (semitones / 12)
+    contour_shifted = 1127 * torch.log(1 + contour_shifted)
+    contour_shifted[contour < eps] = 0
+    return contour_shifted
 
 
 def pitch_invert_mel(contour, note):
-    contour = (np.exp(contour / 1127) - 1) * 700
-    contour[contour > 0] = (librosa.note_to_hz(note) ** 2) / contour[contour > 0]
-    contour = 1127 * np.log(1 + contour / 700)
-    contour[contour < eps] = 0
-    return contour
+    contour_inverted = (np.exp(contour / 1127) - 1) * 700
+    contour_inverted[contour_inverted > 0] = (librosa.note_to_hz(note) ** 2) / contour_inverted[contour_inverted > 0]
+    contour_inverted = 1127 * np.log(1 + contour_inverted / 700)
+    contour_inverted[contour < eps] = 0
+    return contour_inverted
 
 
 def add_noise(contour, amp=5, scale=1):
@@ -640,6 +660,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data, labels = data.to(device), labels.to(device)
             offset = torch.randint(0, max_offset, (1,))
             data = data[:, offset:data.shape[1] - max_offset + offset]
+            data = pitch_shift_tensor(data, torch.rand(1, device=data.device) - 0.5)
 #            data_disturbed = data + torch.randn_like(data) * data_noise_amp
 
             fakes = postprocess(net_g(preprocess(data.unsqueeze(1)))).squeeze(1)
@@ -702,6 +723,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 data, labels = data.to(device), labels.to(device)
                 offset = torch.randint(0, max_offset, (1,))
                 data = data[:, offset:data.shape[1] - max_offset + offset]
+                data = pitch_shift_tensor(data, torch.rand(1, device=data.device) - 0.5)
 #                    data_disturbed = data + torch.randn_like(data) * data_noise_amp
 
                 fakes = postprocess(net_g(preprocess(data.unsqueeze(1)))).squeeze(1)
@@ -743,10 +765,10 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
 
         if epoch % 1 == 0:
-            print(f"Epoch: {epoch:d}")
-            print(f"t_loss: {train_loss:.6f} t_loss_c: {train_contrastive_loss:.6f} t_loss_g: {train_gen_loss:.6f} t_loss_d: {train_disc_loss:.8f}")
+            f0_magic_log(f"Epoch: {epoch:d}")
+            f0_magic_log(f"t_loss: {train_loss:.6f} t_loss_c: {train_contrastive_loss:.6f} t_loss_g: {train_gen_loss:.6f} t_loss_d: {train_disc_loss:.8f}")
             if USE_TEST_SET:
-                print(f"v_loss: {test_loss:.6f} v_loss_c: {test_contrastive_loss:.6f} v_loss_g: {test_gen_loss:.6f} v_loss_d: {test_disc_loss:.8f}")
+                f0_magic_log(f"v_loss: {test_loss:.6f} v_loss_c: {test_contrastive_loss:.6f} v_loss_g: {test_gen_loss:.6f} v_loss_d: {test_disc_loss:.8f}")
             checkpoint = { 
                 'epoch': epoch,
                 'net_g': net_g.state_dict(),
