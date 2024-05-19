@@ -67,9 +67,9 @@ if False:
         )
 
         feats = extract_features_simple(audio, model=hubert_model, version="v2", device="cuda", is_half=config.is_half)
-        feats = feats[0].cpu().numpy()
+        npy = feats[0].cpu().numpy()
 
-        feats_diff = np.pad(np.linalg.norm(feats[:-1] - feats[1:], axis=1), (1, 0))
+        feats_diff = np.pad(np.linalg.norm(npy[:-1] - npy[1:], axis=1), (1, 0))
         np.save(input_file_d, feats_diff)
 
     feats_diff = np.load(input_file_d)
