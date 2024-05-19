@@ -89,6 +89,7 @@ def extract_features_simple(audio, model, version, device, is_half=False, sr=160
             audio, orig_sr=sr, target_sr=16000
         )  # , res_type="soxr_vhq"
     
+    audio_pad = np.pad(audio, (150 * 320, 150 * 320))
     feats_segments = []
     block_size = round(60 * sr)
     max_offset = round(10 * sr)
@@ -105,7 +106,7 @@ def extract_features_simple(audio, model, version, device, is_half=False, sr=160
         else:
             next_split = np.argmin(audio_sum[center - max_offset - window_length:center - window_length]) + round(center - max_offset - 0.5 * window_length)
             next_split = round(next_split / 320) * 320
-        feats_segments.append(extract_features_simple_segment(audio[last_split:min(len(audio), next_split + 160)], model, version, device, is_half))
+        feats_segments.append(extract_features_simple_segment(audio_pad[last_split:min(len(audio), next_split + 160) + 300 * 320], model, version, device, is_half)[:, 150:-150])
         if next_split == len(audio):
             break
         else:

@@ -18,7 +18,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import math
 from scipy.interpolate import CubicSpline
-from scipy.signal import medfilt 
 
 from configs.config import Config
 from infer.modules.vc.utils import load_hubert

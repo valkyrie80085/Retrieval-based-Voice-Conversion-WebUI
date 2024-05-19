@@ -1,7 +1,6 @@
 import torch
 
 import numpy as np
-from scipy.ndimage import median_filter
 
 from f0_magic import compute_f0_inference, pitch_invert_mel, pitch_shift_mel#, noise_amp
 from f0_magic import postprocess, preprocess, padding_size
@@ -29,6 +28,12 @@ with open('f0_test_config.json', 'r') as openfile:
     except:
         invert_axis = ""
     try:
+        feature_file = data["feature_file"]
+    except:
+        feature_file = ""
+    if feature_file == "":
+        feature_file = audio_file
+    try:
         snap_sensitivity = float(data["snap_sensitivity"])
     except:
         snap_sensitivity = None
@@ -45,6 +50,31 @@ print(f"Model loaded from '{model_path:s}'")
 input_file = os.path.splitext(audio_file)[0] + ".npy"
 if not os.path.isfile(input_file):
     np.save(input_file, compute_f0_inference(audio_file, index_file=index_file))
+
+if False:
+    input_file_d = os.path.splitext(feature_file)[0] + " d.npy"
+    if not os.path.isfile(input_file_d):
+        from infer.lib.audio import load_audio, extract_features_simple
+        from infer.modules.vc.utils import load_hubert
+        from configs.config import Config
+        from librosa import resample
+        config = Config()
+        hubert_model = load_hubert(config)
+
+        audio = load_audio(audio_file, 44100)
+        audio = resample(
+            audio, orig_sr=44100, target_sr=16000
+        )
+
+        feats = extract_features_simple(audio, model=hubert_model, version="v2", device="cuda", is_half=config.is_half)
+        feats = feats[0].cpu().numpy()
+
+        feats_diff = np.pad(np.linalg.norm(feats[:-1] - feats[1:], axis=1), (1, 0))
+        np.save(input_file_d, feats_diff)
+
+    feats_diff = np.load(input_file_d)
+    for i in range(len(feats_diff)):
+        print("%.2f" % (i * 0.02), max(feats_diff[i], 2) + np.random.normal() * 0.1)
 
 output_file = os.path.splitext(input_file)[0] + " out.npy"
 #input_contour = np.load("input.npy")
