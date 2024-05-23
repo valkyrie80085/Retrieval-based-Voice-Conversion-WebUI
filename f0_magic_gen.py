@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import torch.optim as optim
 
 segment_size = 2187
-channels = [32, 64, 128, 256, 512, 1024, 1024]
+channels = [64, 128, 256, 512, 512, 1024, 1024]
 kernel_size_conv = [5, 5, 5, 5, 5, 5]
 kernel_size_pool = [3, 3, 3, 3, 3, 3]
 bridge_width = 3
@@ -21,10 +21,10 @@ class PitchContourGenerator(nn.Module):
         self.upsamples = nn.ModuleList([])
 
         for i in range(len(kernel_size_conv)):
-            self.down_convs.append(nn.Conv1d(in_channels=1 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"))
+            self.down_convs.append(nn.Conv1d(in_channels=2 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"))
             self.up_convs.append(nn.Conv1d(out_channels=1 if i == 0 else channels[i - 1], in_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"))
 
-            self.down_idmappings.append(nn.Conv1d(in_channels=1 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=1, padding="same"))
+            self.down_idmappings.append(nn.Conv1d(in_channels=2 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=1, padding="same"))
 
             self.down_convs.append(nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"))
             self.up_convs.append(nn.Conv1d(out_channels=channels[i], in_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"))

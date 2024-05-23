@@ -6,7 +6,7 @@ import torch.optim as optim
 periods = [1, 2, 3, 5, 7, 11]
 segment_size = [1939, 1934, 1929, 1865, 1855, 2024]
 depth = [5, 4, 4, 3, 3, 3]
-channels = [32, 64, 128, 256, 512]
+channels = [64, 128, 256, 256, 512]
 kernel_size_conv = [5, 5, 5, 5, 5]
 kernel_size_pool = [3, 3, 3, 3, 3]
 fc_width = [3, 7, 3, 9, 5, 2]
@@ -18,7 +18,7 @@ class PitchContourDiscriminatorP(nn.Module):
         self.convs = nn.ModuleList([])
         self.pools = nn.ModuleList([])
         for i in range(depth[self.p]):
-            self.convs.append(nn.Conv1d(in_channels=2 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
+            self.convs.append(nn.Conv1d(in_channels=3 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
             self.convs.append(nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
             self.pools.append(nn.MaxPool1d(kernel_size=kernel_size_pool[i]))
         self.fc1 = nn.Linear(channels[depth[self.p] - 1] * fc_width[self.p], channels[depth[self.p] - 1] // 2)
