@@ -32,7 +32,7 @@ eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 40
+multiplicity_target = 400
 multiplicity_others = 40
 max_offset = round(segment_size / 10)
 min_ratio = 0.55
@@ -42,6 +42,7 @@ preprocess_noise_amp_p = 10
 preprocess_noise_amp_d = 0.1
 data_noise_amp_p = 5
 label_noise_amp_p = 0.1
+d_clip_threshold = 4.5
 
 USE_TEST_SET = False
 EPOCH_PER_BAK = 5
@@ -171,9 +172,14 @@ def snap(x, sensitivity):
 
 mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
-def preprocess(x, y):
+def preprocess(x, y, noise_p=None, noise_d=None):
+    if noise_p is None:
+        noise_p = preprocess_noise_amp_p
+    if noise_d is None:
+        noise_d = preprocess_noise_amp_d
     x_ret = smooth(x.squeeze(1), threshold=1.0, blur_mask=False).unsqueeze(1)
-    x_ret = x_ret + torch.randn_like(x_ret) * preprocess_noise_amp_p
+    if noise_p != 0:
+        x_ret = x_ret + torch.randn_like(x_ret) * noise_p
 #    x_ret_hz = (torch.exp(x_ret / 1127) - 1) * 700
 #    x_ret_hz = x_ret_hz * torch.pow(2, torch.randn_like(x_ret_hz) / 24)
 #    x_ret = 1127 * torch.log(1 + x_ret_hz / 700) 
@@ -182,12 +188,16 @@ def preprocess(x, y):
 #    x_ret[x < eps] = (2 * mel_min - mel_max - mn_p) / std_p
     y_ret = y.clone()
     y_ret[x < eps] = 0
-    y_ret = torch.clamp(y_ret, min=2) + torch.randn_like(y_ret) * preprocess_noise_amp_d
+    y_ret = torch.clamp(y_ret, min=d_clip_threshold)
+    if noise_d != 0:
+        y_ret = y_ret + torch.randn_like(y_ret) * noise_d
     y_ret = (y_ret - mn_d) / std_d
     return torch.cat((x_ret, y_ret), dim=1)
 
 
-def preprocess_disc(x, y):
+def preprocess_disc(x, y, noise_d=None):
+    if noise_d is None:
+        noise_d = preprocess_noise_amp_d
     kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
     std_d = 80
     x_blurred = F.conv1d(x, kernel, padding="same")
@@ -197,7 +207,11 @@ def preprocess_disc(x, y):
 #    x_ret[x < eps] = (2 * mel_min - mel_max - mn_p) / std_p
     y_ret = y.clone()
     y_ret[x < eps] = 0
-    y_ret = torch.clamp(y_ret, min=2) + torch.randn_like(y_ret) * preprocess_noise_amp_d
+    y_ret = torch.clamp(y_ret, min=d_clip_threshold)
+    if noise_d != 0:
+        y_ret = y_ret + torch.randn_like(y_ret) * noise_d
+    if random.randint(0, 1) == 0:
+        y_ret = torch.zeros_like(y_ret)
     y_ret = (y_ret - mn_d) / std_d
     return torch.cat((x_blurred, x_sharpened, y_ret), dim=1)
 
@@ -722,7 +736,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
             data_p = pitch_shift_tensor(data_p, torch.rand(1, device=data_p.device) - 0.5)
 
-            fakes = postprocess(net_g(preprocess(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1)
+            fakes = postprocess(net_g(preprocess(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))).squeeze(1)
             d_data_p = fakes.detach().clone()
             d_data_d = data_d.detach().clone()
             d_labels = torch.zeros((d_data_p.shape[0],), device=device)
@@ -739,7 +753,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 d_data_d = torch.cat((d_data_d, data_d[labels > eps]), dim=0)
                 d_labels = torch.cat((d_labels, target_labels), dim=0)
 
-            outputs = net_d(preprocess_disc(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1)))
+            outputs = net_d(preprocess_disc(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
 
             optimizer_d.zero_grad()
             d_labels[d_labels < eps] = 1e-8
@@ -753,7 +767,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             g_data_p = fakes
             g_labels = torch.ones((g_data_p.shape[0],), device=device)
-            outputs = net_d(preprocess_disc(g_data_p.unsqueeze(1), data_d.unsqueeze(1)))
+            outputs = net_d(preprocess_disc(g_data_p.unsqueeze(1), data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
 
             loss_total = 0
             loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
@@ -785,7 +799,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
                 data_p = pitch_shift_tensor(data_p, torch.rand(1, device=data_p.device) - 0.5)
 
-                fakes = postprocess(net_g(preprocess(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1)
+                fakes = postprocess(net_g(preprocess(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))).squeeze(1)
                 d_data_p = fakes.detach().clone()
                 d_data_d = data_d.detach().clone()
                 d_labels = torch.zeros((d_data_p.shape[0],), device=device)
@@ -802,13 +816,13 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                     d_data_d = torch.cat((d_data_d, data_d[labels > eps]), dim=0)
                     d_labels = torch.cat((d_labels, target_labels), dim=0)
 
-                outputs = net_d(preprocess_disc(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1)))
+                outputs = net_d(preprocess_disc(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
                 loss = criterion(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
                 test_disc_loss += loss.item()
 
                 g_data_p = fakes
                 g_labels = torch.ones((g_data_p.shape[0],), device=device)
-                outputs = net_d(preprocess_disc(g_data_p.unsqueeze(1), data_d.unsqueeze(1)))
+                outputs = net_d(preprocess_disc(g_data_p.unsqueeze(1), data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
                 loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
                 test_gen_loss += loss.item()
 
