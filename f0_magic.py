@@ -22,7 +22,7 @@ from scipy.interpolate import CubicSpline
 from configs.config import Config
 from infer.modules.vc.utils import load_hubert
 from f0_magic_gen import PitchContourGenerator, segment_size
-from f0_magic_disc import PitchContourDiscriminator 
+from f0_magic_disc import PitchContourDiscriminator
 
 padding_size = 2 * segment_size
 
@@ -39,6 +39,7 @@ min_ratio = 0.55
 median_filter_size = 17
 gaussian_filter_sigma = 8
 preprocess_noise_amp_p = 10
+preprocess_noise_amp_p_d = 10
 preprocess_noise_amp_d = 0.1
 data_noise_amp_p = 5
 label_noise_amp_p = 0.1
@@ -172,7 +173,7 @@ def snap(x, sensitivity):
 
 mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
-def preprocess(x, y, noise_p=None, noise_d=None):
+def preprocess_t(x, y, noise_p=None, noise_d=None):
     if noise_p is None:
         noise_p = preprocess_noise_amp_p
     if noise_d is None:
@@ -180,12 +181,7 @@ def preprocess(x, y, noise_p=None, noise_d=None):
     x_ret = smooth(x.squeeze(1), threshold=1.0, blur_mask=False).unsqueeze(1)
     if noise_p != 0:
         x_ret = x_ret + torch.randn_like(x_ret) * noise_p
-#    x_ret_hz = (torch.exp(x_ret / 1127) - 1) * 700
-#    x_ret_hz = x_ret_hz * torch.pow(2, torch.randn_like(x_ret_hz) / 24)
-#    x_ret = 1127 * torch.log(1 + x_ret_hz / 700) 
-#    x_ret[x < eps] = 0
     x_ret = (x_ret - mn_p) / std_p
-#    x_ret[x < eps] = (2 * mel_min - mel_max - mn_p) / std_p
     y_ret = y.clone()
     y_ret[x < eps] = 0
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
@@ -195,16 +191,31 @@ def preprocess(x, y, noise_p=None, noise_d=None):
     return torch.cat((x_ret, y_ret), dim=1)
 
 
-def preprocess_disc(x, y, noise_d=None):
+def preprocess_s(x, y):
+    x_ret = (x - mn_p) / std_p
+    y_ret = (y - mn_d) / std_d
+    return torch.cat((x_ret, y_ret), dim=1)
+
+
+def preprocess(x, y):
+    return preprocess_s(x, y)
+
+
+def preprocess_disc_t(x, y, noise_p=None, noise_d=None):
+    if noise_p is None:
+        noise_p = preprocess_noise_amp_p_d
     if noise_d is None:
         noise_d = preprocess_noise_amp_d
     kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
     std_d = 80
     x_blurred = F.conv1d(x, kernel, padding="same")
+    x_blurred[x < eps] = 0
     x_sharpened = x - x_blurred
+    if noise_p != 0:
+        x_blurred = x_blurred + torch.randn_like(x_blurred) * noise_p
+        x_blurred[x < eps] = 0
     x_blurred = (x_blurred - mn_p) / std_p
     x_sharpened = x_sharpened / std_d
-#    x_ret[x < eps] = (2 * mel_min - mel_max - mn_p) / std_p
     y_ret = y.clone()
     y_ret[x < eps] = 0
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
@@ -214,6 +225,13 @@ def preprocess_disc(x, y, noise_d=None):
         y_ret = torch.zeros_like(y_ret)
     y_ret = (y_ret - mn_d) / std_d
     return torch.cat((x_blurred, x_sharpened, y_ret), dim=1)
+
+
+def preprocess_disc_s(x, y, z):
+    x_ret = (x - mn_p) / std_p
+    y_ret = (y - mn_d) / std_d
+    z_ret = (z - mn_p) / std_p
+    return torch.cat((x, y, z), dim=1)
 
 
 def postprocess(x):
@@ -668,10 +686,14 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         test_others_data_p = torch.stack(tuple(pitch for pitch, phone_diff in test_others_data))
         test_others_data_d = torch.stack(tuple(phone_diff for pitch, phone_diff in test_others_data))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net_g = PitchContourGenerator().to(device)
-    net_d = PitchContourDiscriminator().to(device)
-    optimizer_g = optim.AdamW(net_g.parameters(), lr=lr_g)
-    optimizer_d = optim.AdamW(net_d.parameters(), lr=lr_d)
+    net_g_t = PitchContourGenerator().to(device)
+    net_d_t = PitchContourDiscriminator().to(device)
+    net_g_s = PitchContourGenerator().to(device)
+    net_d_s = PitchContourDiscriminator().to(device)
+    optimizer_g_t = optim.AdamW(net_g_t.parameters(), lr=lr_g)
+    optimizer_d_t = optim.AdamW(net_d_t.parameters(), lr=lr_d)
+    optimizer_g_s = optim.AdamW(net_g_t.parameters(), lr=lr_g)
+    optimizer_d_s = optim.AdamW(net_d_t.parameters(), lr=lr_d)
     epoch = 0
 
     MODEL_FILE = name + ".pt"
@@ -686,19 +708,27 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         if os.path.isfile(CHECKPOINT_FILE):
             checkpoint = torch.load(CHECKPOINT_FILE)
             epoch = checkpoint['epoch']
-            net_g.load_state_dict(checkpoint['net_g'])
-            net_d.load_state_dict(checkpoint['net_d'])
-            optimizer_g.load_state_dict(checkpoint['optimizer_g'])
-            optimizer_d.load_state_dict(checkpoint['optimizer_d'])
+            net_g_t.load_state_dict(checkpoint['net_g_t'])
+            net_d_t.load_state_dict(checkpoint['net_d_t'])
+            net_g_s.load_state_dict(checkpoint['net_g_s'])
+            net_d_s.load_state_dict(checkpoint['net_d_s'])
+            optimizer_g_t.load_state_dict(checkpoint['optimizer_g_t'])
+            optimizer_d_t.load_state_dict(checkpoint['optimizer_d_t'])
+            optimizer_g_t.load_state_dict(checkpoint['optimizer_g_s'])
+            optimizer_d_t.load_state_dict(checkpoint['optimizer_d_s'])
             print(f"Data loaded from '{CHECKPOINT_FILE:s}'")
         else:
             print("Model initialized with random weights")
     except:
         epoch = 0
-        net_g = PitchContourGenerator().to(device)
-        net_d = PitchContourDiscriminator().to(device)
-        optimizer_g = optim.Adam(net_g.parameters(), lr=lr_g)
-        optimizer_d = optim.Adam(net_d.parameters(), lr=lr_d)
+        net_g_t = PitchContourGenerator().to(device)
+        net_d_t = PitchContourDiscriminator().to(device)
+        net_g_s = PitchContourGenerator().to(device)
+        net_d_s = PitchContourDiscriminator().to(device)
+        optimizer_g_t = optim.AdamW(net_g_t.parameters(), lr=lr_g)
+        optimizer_d_t = optim.AdamW(net_d_t.parameters(), lr=lr_d)
+        optimizer_g_s = optim.AdamW(net_g_t.parameters(), lr=lr_g)
+        optimizer_d_s = optim.AdamW(net_d_t.parameters(), lr=lr_d)
         print("Model initialized with random weights")
 
     train_dataset = torch.utils.data.TensorDataset(train_target_data_p, train_target_data_d, torch.ones((len(train_target_data),)))
@@ -725,130 +755,142 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     while True:
         epoch += 1
 
-        train_disc_loss = 0
-        train_contrastive_loss = 0
-        train_gen_loss = 0
-        for batch_idx, (data_p, data_d, labels) in enumerate(train_loader):
-            net_d.train()
+        def work(data_p, data_d, labels, is_train, disc_loss, contrastive_loss_t, gen_loss, contrastive_loss_s, imitation_loss):
+            if is_train:
+                net_d_t.train()
+                net_d_s.train()
+            else:
+                net_d_t.eval()
+                net_d_s.eval()
             data_p, data_d, labels = data_p.to(device), data_d.to(device), labels.to(device)
             offset = torch.randint(0, max_offset, (1,))
             data_p = data_p[:, offset:data_p.shape[1] - max_offset + offset]
             data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
             data_p = pitch_shift_tensor(data_p, torch.rand(1, device=data_p.device) - 0.5)
 
-            fakes = postprocess(net_g(preprocess(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))).squeeze(1)
+            fakes = postprocess(net_g_t(preprocess_t(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))).squeeze(1)
+            fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1)
             d_data_p = fakes.detach().clone()
             d_data_d = data_d.detach().clone()
             d_labels = torch.zeros((d_data_p.shape[0],), device=device)
             if torch.sum(labels > eps) > 0:
-                target_data_p = data_p[labels > eps] + torch.randn_like(data_p[labels > eps]) * data_noise_amp_p
-                target_labels = torch.zeros((target_data_p.shape[0],), device=device)
-                d_data_p = torch.cat((d_data_p, target_data_p), dim=0)
-                d_data_d = torch.cat((d_data_d, data_d[labels > eps]), dim=0)
-                d_labels = torch.cat((d_labels, target_labels), dim=0)
-
                 target_data_p = data_p[labels > eps]
                 target_labels = torch.ones((target_data_p.shape[0],), device=device)
                 d_data_p = torch.cat((d_data_p, target_data_p), dim=0)
                 d_data_d = torch.cat((d_data_d, data_d[labels > eps]), dim=0)
                 d_labels = torch.cat((d_labels, target_labels), dim=0)
 
-            outputs = net_d(preprocess_disc(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
-
-            optimizer_d.zero_grad()
-            d_labels[d_labels < eps] = 1e-8
+            outputs = net_d_t(preprocess_disc_t(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p_d, noise_d=preprocess_noise_amp_d))
             loss = criterion(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
-            loss.backward()
-            optimizer_d.step()
+            disc_loss.append(loss.item())
 
-            train_disc_loss += loss.item()
+            if is_train:
+                optimizer_d_t.zero_grad()
+                loss.backward()
+                optimizer_d_t.step()
 
-            net_d.eval()
+                d_s_data_in = torch.cat((data_p, data_p), dim=0)
+                d_s_data_d = torch.cat((data_d, data_d), dim=0)
+                d_s_data_out = torch.cat((fakes.detach(), fakes_s.detach()), dim=0)
+                d_s_labels = torch.cat((torch.ones((fakes.shape[0],), device=device), torch.zeros((fakes_s.shape[0],), device=device)), dim=0)
+
+                outputs = net_d_s(preprocess_disc_s(d_s_data_in.unsqueeze(1), d_s_data_d.unsqueeze(1), d_s_data_out.unsqueeze(1)))
+                loss = criterion(outputs, d_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+
+                optimizer_d_s.zero_grad()
+                loss.backward()
+                optimizer_d_s.step()
+
+            net_d_t.eval()
+            net_d_s.eval()
 
             g_data_p = fakes
             g_labels = torch.ones((g_data_p.shape[0],), device=device)
-            outputs = net_d(preprocess_disc(g_data_p.unsqueeze(1), data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
+            outputs = net_d_t(preprocess_disc_t(g_data_p.unsqueeze(1), data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
 
             loss_total = 0
             loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
             loss_total = loss
-            train_gen_loss += loss.item()
+            gen_loss.append(loss.item())
 
             loss = contrastive_loss(fakes, data_p, gaussian_filter_sigma)
             loss_total += loss * c_loss_factor
-            train_contrastive_loss += loss.item()
+            contrastive_loss_t.append(loss.item())
 
-            optimizer_g.zero_grad()
-            loss_total.backward()
-            optimizer_g.step()
+            if is_train:
+                optimizer_g_t.zero_grad()
+                loss_total.backward()
+                optimizer_g_t.step()
 
-        train_disc_loss /= len(train_loader)
-        train_contrastive_loss /= len(train_loader)
-        train_gen_loss /= len(train_loader)
-        train_loss = train_contrastive_loss * c_loss_factor + train_gen_loss
+            g_s_data_p = fakes_s
+            g_s_labels = torch.ones((g_s_data_p.shape[0],), device=device)
+            outputs = net_d_s(preprocess_disc_s(data_p.unsqueeze(1), data_d.unsqueeze(1), g_s_data_p.unsqueeze(1)))
+
+            loss_total = 0
+            loss = criterion(outputs, g_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+            loss_total = loss
+            imitation_loss.append(loss.item())
+
+            loss = contrastive_loss(fakes_s, data_p, gaussian_filter_sigma)
+            loss_total += loss * c_loss_factor
+            contrastive_loss_s.append(loss.item())
+
+            if is_train:
+                optimizer_g_s.zero_grad()
+                loss_total.backward()
+                optimizer_g_s.step()
+
+
+        train_disc_loss = []
+        train_contrastive_loss_t = []
+        train_gen_loss = []
+        train_contrastive_loss_s = []
+        train_imitation_loss = []
+        for batch_idx, (data_p, data_d, labels) in enumerate(train_loader):
+            work(data_p, data_d, labels, True, train_disc_loss, train_contrastive_loss_t, train_gen_loss, train_contrastive_loss_s, train_imitation_loss)
+            
+        train_disc_loss = np.mean(train_disc_loss)
+        train_contrastive_loss_t = np.mean(train_contrastive_loss_t)
+        train_gen_loss = np.mean(train_gen_loss)
+        train_contrastive_loss_s = np.mean(train_contrastive_loss_s)
+        train_imitation_loss = np.mean(train_imitation_loss)
+        train_loss = (train_contrastive_loss_t + train_contrastive_loss_s) * c_loss_factor + train_gen_loss + train_imitation_loss
 
         if USE_TEST_SET:
-            test_contrastive_loss = 0
-            test_gen_loss = 0
-            test_disc_loss = 0
+            test_disc_loss = []
+            test_contrastive_loss_t = []
+            test_gen_loss = []
+            test_contrastive_loss_s = []
+            test_imitation_loss = []
             for batch_idx, (data_p, data_d, labels) in enumerate(test_loader):
-                net_d.eval()
-                data_p, data_d, labels = data_p.to(device), data_d.to(device), labels.to(device)
-                offset = torch.randint(0, max_offset, (1,))
-                data_p = data_p[:, offset:data_p.shape[1] - max_offset + offset]
-                data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
-                data_p = pitch_shift_tensor(data_p, torch.rand(1, device=data_p.device) - 0.5)
-
-                fakes = postprocess(net_g(preprocess(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))).squeeze(1)
-                d_data_p = fakes.detach().clone()
-                d_data_d = data_d.detach().clone()
-                d_labels = torch.zeros((d_data_p.shape[0],), device=device)
-                if torch.sum(labels > eps) > 0:
-                    target_data_p = data_p[labels > eps] + torch.randn_like(data_p[labels > eps]) * data_noise_amp_p
-                    target_labels = torch.zeros((target_data_p.shape[0],), device=device)
-                    d_data_p = torch.cat((d_data_p, target_data_p), dim=0)
-                    d_data_d = torch.cat((d_data_d, data_d[labels > eps]), dim=0)
-                    d_labels = torch.cat((d_labels, target_labels), dim=0)
-
-                    target_data_p = data_p[labels > eps]
-                    target_labels = torch.ones((target_data_p.shape[0],), device=device)
-                    d_data_p = torch.cat((d_data_p, target_data_p), dim=0)
-                    d_data_d = torch.cat((d_data_d, data_d[labels > eps]), dim=0)
-                    d_labels = torch.cat((d_labels, target_labels), dim=0)
-
-                outputs = net_d(preprocess_disc(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
-                loss = criterion(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
-                test_disc_loss += loss.item()
-
-                g_data_p = fakes
-                g_labels = torch.ones((g_data_p.shape[0],), device=device)
-                outputs = net_d(preprocess_disc(g_data_p.unsqueeze(1), data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
-                loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
-                test_gen_loss += loss.item()
-
-                loss = contrastive_loss(fakes, data_p, gaussian_filter_sigma)
-                test_contrastive_loss += loss.item()
-
-            test_contrastive_loss /= len(test_loader)
-            test_gen_loss /= len(test_loader)
-            test_disc_loss /= len(test_loader)
-            test_loss = test_contrastive_loss * c_loss_factor + test_gen_loss
+                work(data_p, data_d, labels, False, test_disc_loss, test_contrastive_loss_t, test_gen_loss, test_contrastive_loss_s, test_imitation_loss)
+                
+            test_disc_loss = np.mean(test_disc_loss)
+            test_contrastive_loss_t = np.mean(test_contrastive_loss_t)
+            test_gen_loss = np.mean(test_gen_loss)
+            test_contrastive_loss_s = np.mean(test_contrastive_loss_s)
+            test_imitation_loss = np.mean(test_imitation_loss)
+            test_loss = (test_contrastive_loss_t + test_contrastive_loss_s) * c_loss_factor + test_gen_loss + test_imitation_loss
 
 
         if epoch % 1 == 0:
             f0_magic_log(f"Epoch: {epoch:d}")
-            f0_magic_log(f"t_loss: {train_loss:.6f} t_loss_c: {train_contrastive_loss:.6f} t_loss_g: {train_gen_loss:.6f} t_loss_d: {train_disc_loss:.8f}")
+            f0_magic_log(f"t_loss: {train_loss:.4f} t_loss_c_t: {train_contrastive_loss_t:.4f} t_loss_g: {train_gen_loss:.4f} t_loss_d: {train_disc_loss:.4f} t_loss_c_s: {train_contrastive_loss_t:.4f} t_loss_i:{train_imitation_loss:.4f}")
             if USE_TEST_SET:
-                f0_magic_log(f"v_loss: {test_loss:.6f} v_loss_c: {test_contrastive_loss:.6f} v_loss_g: {test_gen_loss:.6f} v_loss_d: {test_disc_loss:.8f}")
+                f0_magic_log(f"v_loss: {test_loss:.4f} v_loss_c_t: {test_contrastive_loss_t:.4f} v_loss_g: {test_gen_loss:.4f} v_loss_d: {test_disc_loss:.4f} v_loss_i:{test_imitation_loss:.4f}")
             checkpoint = { 
                 'epoch': epoch,
-                'net_g': net_g.state_dict(),
-                'net_d': net_d.state_dict(),
-                'optimizer_g': optimizer_g.state_dict(),
-                'optimizer_d': optimizer_d.state_dict()}
+                'net_g_t': net_g_t.state_dict(),
+                'net_d_t': net_d_t.state_dict(),
+                'net_g_s': net_g_s.state_dict(),
+                'net_d_s': net_d_s.state_dict(),
+                'optimizer_g_t': optimizer_g_t.state_dict(),
+                'optimizer_d_t': optimizer_d_t.state_dict(),
+                'optimizer_g_s': optimizer_g_s.state_dict(),
+                'optimizer_d_s': optimizer_d_s.state_dict()}
             while True:
                 try:
-                    torch.save(net_g.state_dict(), MODEL_FILE) 
+                    torch.save(net_g_s.state_dict(), MODEL_FILE) 
                     break
                 except:
                     pass
@@ -875,9 +917,11 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         if True:#(USE_TEST_SET and test_loss < best_loss) or ((not USE_TEST_SET) and train_loss < best_loss):
             #            best_loss = test_loss if USE_TEST_SET else train_loss 
             BAK_FILE = name + " " + str(epoch // EPOCH_PER_BAK * EPOCH_PER_BAK) + ".pt"
+            BAK_FILE_T = name + " t " + str(epoch // EPOCH_PER_BAK * EPOCH_PER_BAK) + ".pt"
             while True:
                 try:
-                    torch.save(net_g.state_dict(), BAK_FILE) 
+                    torch.save(net_g_s.state_dict(), BAK_FILE) 
+                    torch.save(net_g_t.state_dict(), BAK_FILE_T) 
                     break
                 except:
                     pass

@@ -2,7 +2,7 @@ import torch
 
 import numpy as np
 
-from f0_magic import compute_f0_inference, compute_d, resize, pitch_invert_mel, pitch_shift_mel#, noise_amp
+from f0_magic import compute_f0_inference, compute_d, resize, pitch_invert_mel, pitch_shift_mel
 from f0_magic import postprocess, preprocess, padding_size
 from f0_magic_gen import PitchContourGenerator, segment_size
 from f0_magic import snap
@@ -75,8 +75,8 @@ input_phone_diff_pad = np.pad(input_phone_diff_pad, (extra, 0))
 modified_contour_mel_tensor = torch.tensor(modified_contour_mel, dtype=torch.float32, device="cuda")
 input_phone_diff_tensor = torch.tensor(input_phone_diff_pad, dtype=torch.float32, device="cuda")
 #modified_contour_mel_tensor += torch.randn_like(modified_contour_mel_tensor) * noise_amp
-#if snap_sensitivity is not None:
-    #    modified_contour_mel_tensor = snap(modified_contour_mel_tensor, snap_sensitivity)
+if snap_sensitivity is not None:
+    modified_contour_mel_tensor = snap(modified_contour_mel_tensor, snap_sensitivity)
 modified_contour_mel_tensor = postprocess(model(preprocess(modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0)))).squeeze(0).squeeze(0)
 modified_contour_mel = modified_contour_mel_tensor.detach().cpu().numpy()
 modified_contour_mel = modified_contour_mel[extra:]
