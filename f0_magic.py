@@ -23,7 +23,6 @@ from configs.config import Config
 from infer.modules.vc.utils import load_hubert
 from f0_magic_gen import PitchContourGenerator, segment_size
 from f0_magic_disc import PitchContourDiscriminator
-from f0_magic_disc_s import PitchContourDiscriminator as PitchContourDiscriminatorS
 
 padding_size = 2 * segment_size
 
@@ -229,21 +228,15 @@ def preprocess_disc_t(x, y, noise_p=None, noise_d=None):
     return torch.cat((x_blurred, x_sharpened, y_ret), dim=1)
 
 
-def preprocess_disc_s(x, y, z, noise_p=None):
+def preprocess_disc_s(x, y, z):
     kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
-    if noise_p is None:
-        noise_p = preprocess_noise_amp_p_d
     x_blurred = F.conv1d(x, kernel, padding="same")
     x_blurred[x < eps] = 0
     x_sharpened = x - x_blurred
-    if noise_p != 0:
-        x_blurred = x_blurred + torch.randn_like(x_blurred) * noise_p
-        x_blurred[x < eps] = 0
-    x_blurred = (x_blurred - mn_p) / std_p
     x_sharpened = x_sharpened / std_s
     y_ret = (y - mn_d) / std_d
     z_ret = (z - mn_p) / std_p
-    return torch.cat((x_blurred, x_sharpened, y, z), dim=1)
+    return torch.cat((x_sharpened, y, z), dim=1)
 
 
 def postprocess(x):
@@ -701,11 +694,11 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     net_g_t = PitchContourGenerator().to(device)
     net_d_t = PitchContourDiscriminator().to(device)
     net_g_s = PitchContourGenerator().to(device)
-    net_d_s = PitchContourDiscriminatorS().to(device)
+    net_d_s = PitchContourDiscriminator().to(device)
     optimizer_g_t = optim.AdamW(net_g_t.parameters(), lr=lr_g)
     optimizer_d_t = optim.AdamW(net_d_t.parameters(), lr=lr_d)
-    optimizer_g_s = optim.AdamW(net_g_t.parameters(), lr=lr_g)
-    optimizer_d_s = optim.AdamW(net_d_t.parameters(), lr=lr_d)
+    optimizer_g_s = optim.AdamW(net_g_s.parameters(), lr=lr_g)
+    optimizer_d_s = optim.AdamW(net_d_s.parameters(), lr=lr_d)
     epoch = 0
 
     MODEL_FILE = name + ".pt"
@@ -736,11 +729,11 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         net_g_t = PitchContourGenerator().to(device)
         net_d_t = PitchContourDiscriminator().to(device)
         net_g_s = PitchContourGenerator().to(device)
-        net_d_s = PitchContourDiscriminatorS().to(device)
+        net_d_s = PitchContourDiscriminator().to(device)
         optimizer_g_t = optim.AdamW(net_g_t.parameters(), lr=lr_g)
         optimizer_d_t = optim.AdamW(net_d_t.parameters(), lr=lr_d)
-        optimizer_g_s = optim.AdamW(net_g_t.parameters(), lr=lr_g)
-        optimizer_d_s = optim.AdamW(net_d_t.parameters(), lr=lr_d)
+        optimizer_g_s = optim.AdamW(net_g_s.parameters(), lr=lr_g)
+        optimizer_d_s = optim.AdamW(net_d_s.parameters(), lr=lr_d)
         print("Model initialized with random weights")
 
     train_dataset = torch.utils.data.TensorDataset(train_target_data_p, train_target_data_d, torch.ones((len(train_target_data),)))
@@ -806,7 +799,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 d_s_data_out = torch.cat((fakes.detach(), fakes_s.detach()), dim=0)
                 d_s_labels = torch.cat((torch.ones((fakes.shape[0],), device=device), torch.zeros((fakes_s.shape[0],), device=device)), dim=0)
 
-                outputs = net_d_s(preprocess_disc_s(d_s_data_in.unsqueeze(1), d_s_data_d.unsqueeze(1), d_s_data_out.unsqueeze(1), noise_p=preprocess_noise_amp_p_d))
+                outputs = net_d_s(preprocess_disc_s(d_s_data_in.unsqueeze(1), d_s_data_d.unsqueeze(1), d_s_data_out.unsqueeze(1)))
                 loss = criterion(outputs, d_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
 
                 optimizer_d_s.zero_grad()
