@@ -32,8 +32,8 @@ eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 400
-multiplicity_others = 40
+multiplicity_target = 200
+multiplicity_others = 20
 max_offset = round(segment_size / 10)
 min_ratio = 0.55
 median_filter_size = 17
@@ -221,8 +221,8 @@ def preprocess_disc_t(x, y, noise_p=None, noise_d=None):
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
     if noise_d != 0:
         y_ret = y_ret + torch.randn_like(y_ret) * noise_d
-    if random.randint(0, 1) == 0:
-        y_ret = torch.zeros_like(y_ret)
+#    if random.randint(0, 1) == 0:
+#        y_ret = torch.zeros_like(y_ret)
     y_ret = (y_ret - mn_d) / std_d
     return torch.cat((x_blurred, x_sharpened, y_ret), dim=1)
 
