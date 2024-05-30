@@ -884,9 +884,9 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
         if epoch % 1 == 0:
             f0_magic_log(f"Epoch: {epoch:d}")
-            f0_magic_log(f"t_loss: {train_loss:.4f} t_loss_c_t: {train_contrastive_loss_t:.4f} t_loss_g: {train_gen_loss:.4f} t_loss_d: {train_disc_loss:.4f} t_loss_c_s: {train_contrastive_loss_t:.4f} t_loss_i:{train_imitation_loss:.4f}")
+            f0_magic_log(f"t_loss: {train_loss:.4f} t_loss_c_t: {train_contrastive_loss_t:.4f} t_loss_g: {train_gen_loss:.4f} t_loss_d: {train_disc_loss:.4f} t_loss_c_s: {train_contrastive_loss_s:.4f} t_loss_i:{train_imitation_loss:.4f}")
             if USE_TEST_SET:
-                f0_magic_log(f"v_loss: {test_loss:.4f} v_loss_c_t: {test_contrastive_loss_t:.4f} v_loss_g: {test_gen_loss:.4f} v_loss_d: {test_disc_loss:.4f} v_loss_i:{test_imitation_loss:.4f}")
+                f0_magic_log(f"v_loss: {test_loss:.4f} v_loss_c_t: {test_contrastive_loss_t:.4f} v_loss_g: {test_gen_loss:.4f} v_loss_d: {test_disc_loss:.4f} v_loss_c_s: {test_contrastive_loss_s:.4f} v_loss_i:{test_imitation_loss:.4f}")
             checkpoint = { 
                 'epoch': epoch,
                 'net_g_t': net_g_t.state_dict(),
