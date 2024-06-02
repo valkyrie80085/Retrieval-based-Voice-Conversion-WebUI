@@ -797,7 +797,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 d_s_data_in = torch.cat((data_p, data_p), dim=0)
                 d_s_data_d = torch.cat((data_d, data_d), dim=0)
                 d_s_data_out = torch.cat((fakes.detach(), fakes_s.detach()), dim=0)
-                d_s_labels = torch.cat((torch.ones((fakes.shape[0],), device=device), torch.zeros((fakes_s.shape[0],), device=device)), dim=0)
+                d_s_labels = torch.cat((torch.ones((data_p.shape[0],), device=device), torch.zeros((data_p.shape[0],), device=device)), dim=0)
 
                 outputs = net_d_s(preprocess_disc_s(d_s_data_in.unsqueeze(1), d_s_data_d.unsqueeze(1), d_s_data_out.unsqueeze(1)))
                 loss = criterion(outputs, d_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
