@@ -671,6 +671,8 @@ def contrastive_loss(output, ref, size):
     ref_smoothed = ref_scale8 * mask + ref_scale4 * (1 - mask)
     output_smoothed = output_scale8 * mask + output_scale4 * (1 - mask)
 
+    output_smoothed[ref < eps] = output[ref < eps]
+    ref_smoothed[ref < eps] = ref[ref < eps]
     output_smoothed = output_smoothed[:, padding_size:-padding_size]
     ref_smoothed = ref_smoothed[:, padding_size:-padding_size]
 
