@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 import shutil
 
 load_dotenv()
-load_dotenv("sha256.env")
 
 os.environ["OMP_NUM_THREADS"] = "4"
 if sys.platform == "darwin":
@@ -76,11 +75,14 @@ if __name__ == "__main__":
     import json
     import multiprocessing
     import re
+    import threading
     import time
+    import traceback
     from multiprocessing import Queue, cpu_count
+    from queue import Empty
 
     import librosa
-    from infer.modules.gui import TorchGate
+    from tools.torchgate import TorchGate
     import numpy as np
     import FreeSimpleGUI as sg
     import sounddevice as sd
@@ -88,7 +90,7 @@ if __name__ == "__main__":
     import torch.nn.functional as F
     import torchaudio.transforms as tat
 
-    import infer.lib.rtrvc as rtrvc
+    from infer.lib import rtrvc as rvc_for_realtime
     from i18n.i18n import I18nAuto
     from configs.config import Config
 
@@ -114,7 +116,7 @@ if __name__ == "__main__":
             self.pth_path: str = ""
             self.index_path: str = ""
             self.pitch: int = 0
-            self.formant: float = 0.0
+            self.formant=0.0
             self.sr_type: str = "sr_model"
             self.block_time: float = 0.25  # s
             self.threhold: int = -60
@@ -144,24 +146,8 @@ if __name__ == "__main__":
             self.input_devices_indices = None
             self.output_devices_indices = None
             self.stream = None
-            if not self.config.nocheck:
-                self.check_assets()
             self.update_devices()
             self.launcher()
-
-        def check_assets(self):
-            global now_dir
-            from infer.lib.rvcmd import check_all_assets, download_all_assets
-
-            tmp = os.path.join(now_dir, "TEMP")
-            shutil.rmtree(tmp, ignore_errors=True)
-            os.makedirs(tmp, exist_ok=True)
-            if not check_all_assets(update=self.config.update):
-                if self.config.update:
-                    download_all_assets(tmpdir=tmp)
-                    if not check_all_assets(update=self.config.update):
-                        printt("counld not satisfy all assets needed.")
-                        exit(1)
 
         def load(self):
             try:
@@ -253,7 +239,7 @@ if __name__ == "__main__":
                                     initial_folder=os.path.join(
                                         os.getcwd(), "assets/weights"
                                     ),
-                                    file_types=[("Model File", "*.pth")],
+                                    file_types=((". pth"),),
                                 ),
                             ],
                             [
@@ -264,7 +250,7 @@ if __name__ == "__main__":
                                 sg.FileBrowse(
                                     i18n("选择.index文件"),
                                     initial_folder=os.path.join(os.getcwd(), "logs"),
-                                    file_types=[("Index File", "*.index")],
+                                    file_types=((". index"),),
                                 ),
                             ],
                         ],
@@ -349,7 +335,7 @@ if __name__ == "__main__":
                             [
                                 sg.Text(i18n("音调设置")),
                                 sg.Slider(
-                                    range=(-24, 24),
+                                    range=(-16, 16),
                                     key="pitch",
                                     resolution=1,
                                     orientation="h",
@@ -358,11 +344,11 @@ if __name__ == "__main__":
                                 ),
                             ],
                             [
-                                sg.Text(i18n("共振偏移")),
+                                sg.Text(i18n("性别因子/声线粗细")),
                                 sg.Slider(
-                                    range=(-5, 5),
+                                    range=(-2, 2),
                                     key="formant",
-                                    resolution=0.01,
+                                    resolution=0.05,
                                     orientation="h",
                                     default_value=data.get("formant", 0.0),
                                     enable_events=True,
@@ -593,7 +579,6 @@ if __name__ == "__main__":
                             ],
                             "threhold": values["threhold"],
                             "pitch": values["pitch"],
-                            "formant": values["formant"],
                             "rms_mix_rate": values["rms_mix_rate"],
                             "index_rate": values["index_rate"],
                             # "device_latency": values["device_latency"],
@@ -721,7 +706,7 @@ if __name__ == "__main__":
 
         def start_vc(self):
             torch.cuda.empty_cache()
-            self.rvc = rtrvc.RVC(
+            self.rvc = rvc_for_realtime.RVC(
                 self.gui_config.pitch,
                 self.gui_config.formant,
                 self.gui_config.pth_path,
