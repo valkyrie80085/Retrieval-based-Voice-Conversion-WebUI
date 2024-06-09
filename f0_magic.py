@@ -199,10 +199,6 @@ def preprocess_s(x, y):
     return torch.cat((x_ret, y_ret), dim=1)
 
 
-def preprocess(x, y):
-    return preprocess_s(x, y)
-
-
 def preprocess_disc_t(x, y, noise_p=None, noise_d=None):
     if noise_p is None:
         noise_p = preprocess_noise_amp_p_d
