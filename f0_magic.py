@@ -32,7 +32,7 @@ eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 200
+multiplicity_target = 1470
 multiplicity_others = 20
 max_offset = round(segment_size / 10)
 min_ratio = 0.55
@@ -51,7 +51,10 @@ EPOCH_PER_BAK = 5
 
 lr_g = 1e-5
 lr_d = 1e-5
-c_loss_factor = 1
+c_loss_factor_t = 1
+c_loss_factor_s = 1
+c_loss_goal_t = 2
+c_loss_goal_s = 0
 
 
 def f0_magic_log(s):
@@ -156,7 +159,7 @@ def snap_helper(x, sensitivity):
     x_semitone = torch.log2(x / 440) * 12
     x_semitone_rounded = torch.floor(x_semitone)
     x_semitone_remainder = x_semitone - x_semitone_rounded
-    x_semitone_remainder_snapped = torch.sin(torch.clip(x_semitone_remainder - 0.5, -(1 - sensitivity) / 2, (1 - sensitivity) / 2) * (math.pi / (1 - sensitivity))) / 2 + 0.5
+    x_semitone_remainder_snapped = torch.sin(torch.clamp(x_semitone_remainder - 0.5, -(1 - sensitivity) / 2, (1 - sensitivity) / 2) * (math.pi / (1 - sensitivity))) / 2 + 0.5
     x_semitone_snapped = x_semitone_rounded + x_semitone_remainder_snapped
     x_snapped = torch.pow(2, x_semitone_snapped / 12) * 440
     x_snapped[x < eps] = 0
@@ -817,7 +820,8 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             gen_loss.append(loss.item())
 
             loss = contrastive_loss(fakes, data_p, gaussian_filter_sigma)
-            loss_total += loss * c_loss_factor
+            loss = torch.clamp(loss - c_loss_goal_t, min=0)
+            loss_total += loss * c_loss_factor_t
             contrastive_loss_t.append(loss.item())
 
             if is_train:
@@ -835,7 +839,8 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             imitation_loss.append(loss.item())
 
             loss = contrastive_loss(fakes_s, data_p, gaussian_filter_sigma)
-            loss_total += loss * c_loss_factor
+            loss = torch.clamp(loss - c_loss_goal_s, min=0)
+            loss_total += loss * c_loss_factor_s
             contrastive_loss_s.append(loss.item())
 
             if is_train:
@@ -859,7 +864,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         train_gen_loss = np.mean(train_gen_loss)
         train_contrastive_loss_s = np.mean(train_contrastive_loss_s)
         train_imitation_loss = np.mean(train_imitation_loss)
-        train_loss = (train_contrastive_loss_t + train_contrastive_loss_s) * c_loss_factor + train_gen_loss + train_imitation_loss
+        train_loss = (train_contrastive_loss_t + train_contrastive_loss_s) * c_loss_factor_s + train_gen_loss + train_imitation_loss
 
         if USE_TEST_SET:
             test_disc_loss = []
@@ -877,7 +882,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             test_gen_loss = np.mean(test_gen_loss)
             test_contrastive_loss_s = np.mean(test_contrastive_loss_s)
             test_imitation_loss = np.mean(test_imitation_loss)
-            test_loss = (test_contrastive_loss_t + test_contrastive_loss_s) * c_loss_factor + test_gen_loss + test_imitation_loss
+            test_loss = (test_contrastive_loss_t + test_contrastive_loss_s) * c_loss_factor_s + test_gen_loss + test_imitation_loss
 
 
         if epoch % 1 == 0:
