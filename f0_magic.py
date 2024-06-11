@@ -819,7 +819,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             loss_total = loss
             gen_loss.append(loss.item())
 
-            loss = contrastive_loss(fakes, data_p, gaussian_filter_sigma, c_loss_goal_t)
+            loss = contrastive_loss(fakes, data_p, gaussian_filter_sigma, goal=c_loss_goal_t)
             loss_total += loss * c_loss_factor_t
             contrastive_loss_t.append(loss.item())
 
@@ -837,7 +837,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             loss_total = loss
             imitation_loss.append(loss.item())
 
-            loss = contrastive_loss(fakes_s, data_p, gaussian_filter_sigma, c_loss_goal_s)
+            loss = contrastive_loss(fakes_s, data_p, gaussian_filter_sigma, goal=c_loss_goal_s)
             loss_total += loss * c_loss_factor_s
             contrastive_loss_s.append(loss.item())
 
