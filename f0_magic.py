@@ -53,7 +53,7 @@ lr_g = 1e-5
 lr_d = 1e-5
 c_loss_factor_t = 1
 c_loss_factor_s = 1
-c_loss_goal_t = 2
+c_loss_goal_t = 4
 c_loss_goal_s = 0
 
 
