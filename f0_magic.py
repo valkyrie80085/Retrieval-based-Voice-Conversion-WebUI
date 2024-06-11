@@ -53,7 +53,7 @@ lr_g = 1e-5
 lr_d = 1e-5
 c_loss_factor_t = 1
 c_loss_factor_s = 1
-c_loss_goal_t = 4
+c_loss_goal_t = 5
 c_loss_goal_s = 0
 
 
@@ -656,7 +656,7 @@ def median_filter1d_torch(x, size):
     return torch.median(torch.cat(tuple(x[:, i:x.shape[1] - size + i + 1].unsqueeze(2) for i in range(size)), dim=2), dim=2).values
 
 
-def contrastive_loss(output, ref, size):
+def contrastive_loss(output, ref, size, goal=0):
     ref_scale8, output_scale8 = smooth_simple(ref, 8, [output])
     ref_scale4, output_scale4 = smooth_simple(ref, 4, [output])
 
@@ -675,7 +675,7 @@ def contrastive_loss(output, ref, size):
     output_smoothed = output_smoothed[:, padding_size:-padding_size]
     ref_smoothed = ref_smoothed[:, padding_size:-padding_size]
 
-    return F.mse_loss(output_smoothed, ref_smoothed)
+    return torch.mean(torch.clamp((output_smoothed - ref_smoothed) ** 2 - goal, min=0))
 
 
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
@@ -819,8 +819,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             loss_total = loss
             gen_loss.append(loss.item())
 
-            loss = contrastive_loss(fakes, data_p, gaussian_filter_sigma)
-            loss = torch.clamp(loss - c_loss_goal_t, min=0)
+            loss = contrastive_loss(fakes, data_p, gaussian_filter_sigma, c_loss_goal_t)
             loss_total += loss * c_loss_factor_t
             contrastive_loss_t.append(loss.item())
 
@@ -838,8 +837,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             loss_total = loss
             imitation_loss.append(loss.item())
 
-            loss = contrastive_loss(fakes_s, data_p, gaussian_filter_sigma)
-            loss = torch.clamp(loss - c_loss_goal_s, min=0)
+            loss = contrastive_loss(fakes_s, data_p, gaussian_filter_sigma, c_loss_goal_s)
             loss_total += loss * c_loss_factor_s
             contrastive_loss_s.append(loss.item())
 
