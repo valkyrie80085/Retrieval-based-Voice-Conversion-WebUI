@@ -53,7 +53,7 @@ lr_g = 1e-5
 lr_d = 1e-5
 c_loss_factor_t = 1
 c_loss_factor_s = 1
-c_loss_goal_t = 5
+c_loss_goal_t = 2
 c_loss_goal_s = 0
 
 
@@ -202,29 +202,28 @@ def preprocess_s(x, y):
     return torch.cat((x_ret, y_ret), dim=1)
 
 
-def preprocess_disc_t(x, y, noise_p=None, noise_d=None):
+def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
     if noise_p is None:
         noise_p = preprocess_noise_amp_p_d
     if noise_d is None:
         noise_d = preprocess_noise_amp_d
     kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
-    x_blurred = F.conv1d(x, kernel, padding="same")
-    x_blurred[x < eps] = 0
-    x_sharpened = x - x_blurred
+    a_blurred = F.conv1d(a, kernel, padding="same")
+    a_blurred[a < eps] = 0
     if noise_p != 0:
-        x_blurred = x_blurred + torch.randn_like(x_blurred) * noise_p
-        x_blurred[x < eps] = 0
-    x_blurred = (x_blurred - mn_p) / std_p
-    x_sharpened = x_sharpened / std_s
+        a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
+        a_blurred[a < eps] = 0
+    a_blurred = (a_blurred - mn_p) / std_p
+    x_ret = (x - mn_p) / std_p
     y_ret = y.clone()
-    y_ret[x < eps] = 0
+    y_ret[a < eps] = 0
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
     if noise_d != 0:
         y_ret = y_ret + torch.randn_like(y_ret) * noise_d
 #    if random.randint(0, 1) == 0:
 #        y_ret = torch.zeros_like(y_ret)
     y_ret = (y_ret - mn_d) / std_d
-    return torch.cat((x_blurred, x_sharpened, y_ret), dim=1)
+    return torch.cat((a_blurred, x_ret, y_ret), dim=1)
 
 
 def preprocess_disc_s(x, y, z):
@@ -656,7 +655,25 @@ def median_filter1d_torch(x, size):
     return torch.median(torch.cat(tuple(x[:, i:x.shape[1] - size + i + 1].unsqueeze(2) for i in range(size)), dim=2), dim=2).values
 
 
-def contrastive_loss(output, ref, size, goal=0):
+def get_contrastive_loss_t(output, ref, size):
+    return torch.tensor(0, device=output.device)
+
+#    ref_scale8, output_scale8 = smooth_simple(ref, 8, [output])
+
+#    output_scale8 = output_scale8[0]
+
+#    ref_smoothed = ref_scale8
+#    output_smoothed = output_scale8
+
+#    output_smoothed[ref < eps] = output[ref < eps]
+#    ref_smoothed[ref < eps] = ref[ref < eps]
+#    output_smoothed = output_smoothed[:, padding_size:-padding_size]
+#    ref_smoothed = ref_smoothed[:, padding_size:-padding_size]
+
+#    return torch.mean(torch.clamp((output_smoothed - ref_smoothed) ** 2 - c_loss_goal_t, min=0))
+
+
+def get_contrastive_loss_s(output, ref, size):
     ref_scale8, output_scale8 = smooth_simple(ref, 8, [output])
     ref_scale4, output_scale4 = smooth_simple(ref, 4, [output])
 
@@ -675,7 +692,7 @@ def contrastive_loss(output, ref, size, goal=0):
     output_smoothed = output_smoothed[:, padding_size:-padding_size]
     ref_smoothed = ref_smoothed[:, padding_size:-padding_size]
 
-    return torch.mean(torch.clamp((output_smoothed - ref_smoothed) ** 2 - goal, min=0))
+    return torch.mean(torch.clamp((output_smoothed - ref_smoothed) ** 2 - c_loss_goal_s, min=0))
 
 
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
@@ -776,17 +793,19 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             fakes = postprocess(net_g_t(preprocess_t(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))).squeeze(1)
             fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1)
+            d_data_inputs = data_p
             d_data_p = fakes.detach().clone()
-            d_data_d = data_d.detach().clone()
+            d_data_d = data_d
             d_labels = torch.zeros((d_data_p.shape[0],), device=device)
             if torch.sum(labels > eps) > 0:
                 target_data_p = data_p[labels > eps]
                 target_labels = torch.ones((target_data_p.shape[0],), device=device)
+                d_data_inputs = torch.cat((d_data_inputs, target_data_p), dim=0)
                 d_data_p = torch.cat((d_data_p, target_data_p), dim=0)
                 d_data_d = torch.cat((d_data_d, data_d[labels > eps]), dim=0)
                 d_labels = torch.cat((d_labels, target_labels), dim=0)
 
-            outputs = net_d_t(preprocess_disc_t(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p_d, noise_d=preprocess_noise_amp_d))
+            outputs = net_d_t(preprocess_disc_t(d_data_inputs.unsqueeze(1), d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p_d, noise_d=preprocess_noise_amp_d))
             loss = criterion(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
             disc_loss.append(loss.item())
 
@@ -812,14 +831,14 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             g_data_p = fakes
             g_labels = torch.ones((g_data_p.shape[0],), device=device)
-            outputs = net_d_t(preprocess_disc_t(g_data_p.unsqueeze(1), data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
+            outputs = net_d_t(preprocess_disc_t(data_p.unsqueeze(1), g_data_p.unsqueeze(1), data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
 
             loss_total = 0
             loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
             loss_total = loss
             gen_loss.append(loss.item())
 
-            loss = contrastive_loss(fakes, data_p, gaussian_filter_sigma, goal=c_loss_goal_t)
+            loss = get_contrastive_loss_t(fakes, data_p, gaussian_filter_sigma)
             loss_total += loss * c_loss_factor_t
             contrastive_loss_t.append(loss.item())
 
@@ -837,7 +856,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             loss_total = loss
             imitation_loss.append(loss.item())
 
-            loss = contrastive_loss(fakes_s, data_p, gaussian_filter_sigma, goal=c_loss_goal_s)
+            loss = get_contrastive_loss_s(fakes_s, data_p, gaussian_filter_sigma)
             loss_total += loss * c_loss_factor_s
             contrastive_loss_s.append(loss.item())
 
@@ -885,9 +904,9 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
         if epoch % 1 == 0:
             f0_magic_log(f"Epoch: {epoch:d}")
-            f0_magic_log(f"t_loss: {train_loss:.4f} t_loss_c_t: {train_contrastive_loss_t:.4f} t_loss_g: {train_gen_loss:.4f} t_loss_d: {train_disc_loss:.4f} t_loss_c_s: {train_contrastive_loss_s:.4f} t_loss_i:{train_imitation_loss:.4f}")
+            f0_magic_log(f"t_loss: {train_loss:.4f} t_loss_g: {train_gen_loss:.4f} t_loss_d: {train_disc_loss:.4f} t_loss_c_s: {train_contrastive_loss_s:.4f} t_loss_i:{train_imitation_loss:.4f}")
             if USE_TEST_SET:
-                f0_magic_log(f"v_loss: {test_loss:.4f} v_loss_c_t: {test_contrastive_loss_t:.4f} v_loss_g: {test_gen_loss:.4f} v_loss_d: {test_disc_loss:.4f} v_loss_c_s: {test_contrastive_loss_s:.4f} v_loss_i:{test_imitation_loss:.4f}")
+                f0_magic_log(f"v_loss: {test_loss:.4f} v_loss_g: {test_gen_loss:.4f} v_loss_d: {test_disc_loss:.4f} v_loss_c_s: {test_contrastive_loss_s:.4f} v_loss_i:{test_imitation_loss:.4f}")
             checkpoint = { 
                 'epoch': epoch,
                 'net_g_t': net_g_t.state_dict(),
