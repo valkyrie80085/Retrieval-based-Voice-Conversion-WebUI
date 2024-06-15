@@ -32,7 +32,7 @@ eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 1470
+multiplicity_target = 20
 multiplicity_others = 20
 max_offset = round(segment_size / 10)
 min_ratio = 0.55
@@ -175,6 +175,19 @@ def snap(x, sensitivity):
     return x_snapped
 
 
+def zero_sensative_blur(x, noise_p=0):
+    x_ones = torch.zeros_like(x)
+    x_ones[x > eps] = 1
+    kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
+    x_blurred = F.conv1d(x, kernel, padding="same")
+    x_ones = F.conv1d(x_ones, kernel, padding="same")
+    x_blurred[x > eps] = x_blurred[x > eps] / x_ones[x > eps]
+    if noise_p != 0:
+        x_blurred = x_blurred + torch.randn_like(x_blurred) * noise_p
+    x_blurred[~(x > eps)] = 0
+    return x_blurred
+
+
 mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
 std_s = 80
@@ -183,9 +196,12 @@ def preprocess_t(x, y, noise_p=None, noise_d=None):
         noise_p = preprocess_noise_amp_p
     if noise_d is None:
         noise_d = preprocess_noise_amp_d
-    x_ret = smooth(x.squeeze(1), threshold=1.0, blur_mask=False).unsqueeze(1)
-    if noise_p != 0:
-        x_ret = x_ret + torch.randn_like(x_ret) * noise_p
+#    x_ret = smooth(x.squeeze(1), threshold=1.0, blur_mask=False).unsqueeze(1)
+#    if noise_p != 0:
+        #        x_ret = x_ret + torch.randn_like(x_ret) * noise_p
+
+    x_ret = zero_sensative_blur(x, noise_p)
+
     x_ret = (x_ret - mn_p) / std_p
     y_ret = y.clone()
     y_ret[x < eps] = 0
@@ -194,7 +210,6 @@ def preprocess_t(x, y, noise_p=None, noise_d=None):
         y_ret = y_ret + torch.randn_like(y_ret) * noise_d
     y_ret = (y_ret - mn_d) / std_d
     return torch.cat((x_ret, y_ret), dim=1)
-
 
 def preprocess_s(x, y):
     x_ret = (x - mn_p) / std_p
@@ -207,13 +222,14 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
         noise_p = preprocess_noise_amp_p_d
     if noise_d is None:
         noise_d = preprocess_noise_amp_d
-    kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
-    a_blurred = F.conv1d(a, kernel, padding="same")
-    a_blurred[a < eps] = 0
-    if noise_p != 0:
-        a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
-        a_blurred[a < eps] = 0
-    a_blurred = (a_blurred - mn_p) / std_p
+#    kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
+#    a_blurred = F.conv1d(a, kernel, padding="same")
+#    a_blurred[a < eps] = 0
+#    if noise_p != 0:
+#        a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
+#        a_blurred[a < eps] = 0
+#    a_blurred = (a_blurred - mn_p) / std_p
+    a_blurred = zero_sensative_blur(a, noise_p)
     x_ret = (x - mn_p) / std_p
     y_ret = y.clone()
     y_ret[a < eps] = 0
@@ -227,9 +243,7 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
 
 
 def preprocess_disc_s(x, y, z):
-    kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
-    x_blurred = F.conv1d(x, kernel, padding="same")
-    x_blurred[x < eps] = 0
+    x_blurred = zero_sensative_blur(x)
     x_sharpened = x - x_blurred
     x_sharpened = x_sharpened / std_s
     y_ret = (y - mn_d) / std_d
@@ -755,8 +769,12 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         print("Model initialized with random weights")
 
     train_dataset = torch.utils.data.TensorDataset(train_target_data_p, train_target_data_d, torch.ones((len(train_target_data),)))
+    num1s = len(train_target_data)
     if train_others_data:
         train_dataset += torch.utils.data.TensorDataset(train_others_data_p, train_others_data_d, torch.zeros((len(train_others_data),)))
+        num0s = len(train_others_data)
+    else:
+        num0s = 0
     if USE_TEST_SET:
         test_dataset = torch.utils.data.TensorDataset(test_target_data_p, test_target_data_d, torch.ones((len(test_target_data),)))
         if test_others_data:
@@ -764,14 +782,15 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     else:
         if test_target_data:
             train_dataset += torch.utils.data.TensorDataset(test_target_data_p, test_target_data_d, torch.ones((len(test_target_data),)))
+            num1s += len(test_target_data)
         if test_others_data:
             train_dataset += torch.utils.data.TensorDataset(test_others_data_p, test_others_data_d, torch.zeros((len(test_others_data),)))
+            num0s += len(test_others_data)
+    data_ratio = (num0s + num1s) / num1s
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     if USE_TEST_SET:
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True)
-
-    criterion = nn.BCELoss()
 
     best_loss = float("inf")
 
@@ -806,7 +825,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 d_labels = torch.cat((d_labels, target_labels), dim=0)
 
             outputs = net_d_t(preprocess_disc_t(d_data_inputs.unsqueeze(1), d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p_d, noise_d=preprocess_noise_amp_d))
-            loss = criterion(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+            loss = F.binary_cross_entropy(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]), weight=((d_labels > 0) * (data_ratio - 1) + 1).unsqueeze(1).expand(-1, outputs.shape[1]))
             disc_loss.append(loss.item())
 
             if is_train:
@@ -820,7 +839,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 d_s_labels = torch.cat((torch.ones((data_p.shape[0],), device=device), torch.zeros((data_p.shape[0],), device=device)), dim=0)
 
                 outputs = net_d_s(preprocess_disc_s(d_s_data_in.unsqueeze(1), d_s_data_d.unsqueeze(1), d_s_data_out.unsqueeze(1)))
-                loss = criterion(outputs, d_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+                loss = F.binary_cross_entropy(outputs, d_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
 
                 optimizer_d_s.zero_grad()
                 loss.backward()
@@ -830,11 +849,11 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             net_d_s.eval()
 
             g_data_p = fakes
-            g_labels = torch.ones((g_data_p.shape[0],), device=device)
+            g_labels = torch.zeros((g_data_p.shape[0],), device=device)
             outputs = net_d_t(preprocess_disc_t(data_p.unsqueeze(1), g_data_p.unsqueeze(1), data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
 
             loss_total = 0
-            loss = criterion(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+            loss = -F.binary_cross_entropy(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
             loss_total = loss
             gen_loss.append(loss.item())
 
@@ -848,11 +867,11 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 optimizer_g_t.step()
 
             g_s_data_p = fakes_s
-            g_s_labels = torch.ones((g_s_data_p.shape[0],), device=device)
+            g_s_labels = torch.zeros((g_s_data_p.shape[0],), device=device)
             outputs = net_d_s(preprocess_disc_s(data_p.unsqueeze(1), data_d.unsqueeze(1), g_s_data_p.unsqueeze(1)))
 
             loss_total = 0
-            loss = criterion(outputs, g_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+            loss = F.binary_cross_entropy(outputs, 1 - g_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
             loss_total = loss
             imitation_loss.append(loss.item())
 
