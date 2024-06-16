@@ -175,15 +175,13 @@ def snap(x, sensitivity):
     return x_snapped
 
 
-def zero_sensative_blur(x, noise_p=0):
+def zero_sensative_blur(x):
     x_ones = torch.zeros_like(x)
     x_ones[x > eps] = 1
     kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
     x_blurred = F.conv1d(x, kernel, padding="same")
     x_ones = F.conv1d(x_ones, kernel, padding="same")
     x_blurred[x > eps] = x_blurred[x > eps] / x_ones[x > eps]
-    if noise_p != 0:
-        x_blurred = x_blurred + torch.randn_like(x_blurred) * noise_p
     x_blurred[~(x > eps)] = 0
     return x_blurred
 
@@ -197,10 +195,10 @@ def preprocess_t(x, y, noise_p=None, noise_d=None):
     if noise_d is None:
         noise_d = preprocess_noise_amp_d
 #    x_ret = smooth(x.squeeze(1), threshold=1.0, blur_mask=False).unsqueeze(1)
-#    if noise_p != 0:
-        #        x_ret = x_ret + torch.randn_like(x_ret) * noise_p
 
-    x_ret = zero_sensative_blur(x, noise_p)
+    x_ret = zero_sensative_blur(x)
+    if noise_p != 0:
+        x_ret = x_ret + torch.randn_like(x_ret) * noise_p
 
     x_ret = (x_ret - mn_p) / std_p
     y_ret = y.clone()
@@ -210,6 +208,7 @@ def preprocess_t(x, y, noise_p=None, noise_d=None):
         y_ret = y_ret + torch.randn_like(y_ret) * noise_d
     y_ret = (y_ret - mn_d) / std_d
     return torch.cat((x_ret, y_ret), dim=1)
+
 
 def preprocess_s(x, y):
     x_ret = (x - mn_p) / std_p
@@ -229,7 +228,9 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
 #        a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
 #        a_blurred[a < eps] = 0
 #    a_blurred = (a_blurred - mn_p) / std_p
-    a_blurred = zero_sensative_blur(a, noise_p)
+    a_blurred = zero_sensative_blur(a)
+    if noise_p != 0:
+        a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
     x_ret = (x - mn_p) / std_p
     y_ret = y.clone()
     y_ret[a < eps] = 0
