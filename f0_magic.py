@@ -53,7 +53,7 @@ lr_g = 1e-5
 lr_d = 1e-5
 c_loss_factor_t = 1
 c_loss_factor_s = 1
-c_loss_goal_t = 100
+c_loss_goal_t = 10
 c_loss_goal_s = 0
 
 
@@ -674,7 +674,7 @@ def median_filter1d_torch(x, size):
 def get_contrastive_loss_t(output, ref):
     output_smoothed = zero_sensative_blur(output.unsqueeze(1))
     ref_smoothed = zero_sensative_blur(ref.unsqueeze(1))
-    return torch.mean(torch.clamp((output_smoothed - ref_smoothed) ** 2 - c_loss_goal_t, min=0))
+    return torch.mean(torch.clamp((output_smoothed - ref_smoothed) ** 2 - c_loss_goal_t ** 2, min=0))
 
 
 def get_contrastive_loss_s(output, ref):
