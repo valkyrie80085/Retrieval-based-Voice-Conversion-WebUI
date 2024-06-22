@@ -253,7 +253,7 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
     if noise_p != 0:
         a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
     a_blurred = (a_blurred - mn_p) / std_p
-    x[a < eps] = 0
+    x[a < eps] = a_blurred[a < eps]
     x_ret = (interp_zero(x) - mn_p) / std_p
     y_ret = y.clone()
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
@@ -279,9 +279,10 @@ def preprocess_disc_s(x, y, z):
     return torch.cat((x_sharpened, y, z), dim=1)
 
 
-def postprocess(x):
+def postprocess(x, a):
     x_ret = x.clone()
     x_ret = x * std_p + mn_p
+    x_ret[a < eps] = 0
 #    x_ret[x < eps] = (2 * mel_min - mel_max - mn_p) / std_p
     return x_ret
 
@@ -826,8 +827,8 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
             data_p = pitch_shift_tensor(data_p, torch.randn(1, device=data_p.device) * 0.5)
 
-            fakes = postprocess(net_g_t(preprocess_t(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))).squeeze(1)
-            fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1)
+            fakes = postprocess(net_g_t(preprocess_t(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d)), data_p.unsqueeze(1)).squeeze(1)
+            fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1))), data_p.unsqueeze(1)).squeeze(1)
             d_data_inputs = data_p
             d_data_p = fakes.detach().clone()
             d_data_d = data_d
