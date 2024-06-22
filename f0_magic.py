@@ -234,7 +234,7 @@ def preprocess_s(x, y):
     x_ret = x.clone()
     x_ret[x < eps] = x_blurred[x < eps]
     x_ret = (x_ret - mn_p) / std_p
-    y_ret[x < eps] = -1
+    y[x < eps] = -1
     y_ret = (y - mn_d) / std_d
     return torch.cat((x_ret, y_ret), dim=1)
 
@@ -274,8 +274,8 @@ def preprocess_disc_s(x, y, z):
     x_blurred = zero_sensative_blur(x)
     x_sharpened = x - x_blurred
     x_sharpened = x_sharpened / std_s
+    y[x < eps] = -1
     y_ret = (y - mn_d) / std_d
-    y_ret[x < eps] = -1
     z[x < eps] = 0
     z_ret = (interp_zero(z) - mn_p) / std_p
     return torch.cat((x_sharpened, y, z), dim=1)
