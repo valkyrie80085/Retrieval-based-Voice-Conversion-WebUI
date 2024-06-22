@@ -229,7 +229,11 @@ def preprocess_t(x, y, noise_p=None, noise_d=None):
 
 
 def preprocess_s(x, y):
-    x_ret = (interp_zero(x) - mn_p) / std_p
+    x_blurred = zero_sensative_blur(x)
+    x_blurred = interp_zero(x_blurred)
+    x_ret = x.clone()
+    x_ret[x < eps] = x_blurred[x < eps]
+    x_ret = (x_ret - mn_p) / std_p
     y_ret = (y - mn_d) / std_d
     y_ret[x < eps] = -1
     return torch.cat((x_ret, y_ret), dim=1)
