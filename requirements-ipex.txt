@@ -54,3 +54,4 @@ FreeSimpleGUI
 sounddevice
 torchfcpe
 pyloudnorm
+xitorch

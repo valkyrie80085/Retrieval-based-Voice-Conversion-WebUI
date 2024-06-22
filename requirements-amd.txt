@@ -48,3 +48,4 @@ python-dotenv>=1.0.0
 av
 torchfcpe
 pyloudnorm
+xitorch
