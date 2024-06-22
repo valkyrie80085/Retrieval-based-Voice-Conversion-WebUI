@@ -213,8 +213,8 @@ def preprocess_t(x, y, noise_p=None, noise_d=None):
         noise_d = preprocess_noise_amp_d
 #    x_ret = smooth(x.squeeze(1), threshold=1.0, blur_mask=False).unsqueeze(1)
 
-#    x_ret = zero_sensative_blur(x)
-    x_ret = blur(interp_zero(x))
+    x_ret = zero_sensative_blur(x)
+    x_ret = interp_zero(x_ret)
     if noise_p != 0:
         x_ret = x_ret + torch.randn_like(x_ret) * noise_p
 
@@ -248,12 +248,12 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
 #        a_blurred[a < eps] = 0
 #    a_blurred = (a_blurred - mn_p) / std_p
 
-#    a_blurred = zero_sensative_blur(a)
-    a_blurred = blur(interp_zero(a))
+    a_blurred = zero_sensative_blur(a)
+    a_blurred = interp_zero(a_blurred)
+    x[a < eps] = a_blurred[a < eps]
     if noise_p != 0:
         a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
     a_blurred = (a_blurred - mn_p) / std_p
-    x[a < eps] = a_blurred[a < eps]
     x_ret = (interp_zero(x) - mn_p) / std_p
     y_ret = y.clone()
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
@@ -267,10 +267,8 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
 
 
 def preprocess_disc_s(x, y, z):
-#    x_blurred = zero_sensative_blur(x)
-    x_interp = interp_zero(x)
-    x_blurred = zero_sensative_blur(x_interp)
-    x_sharpened = x_interp - x_blurred
+    x_blurred = zero_sensative_blur(x)
+    x_sharpened = x - x_blurred
     x_sharpened = x_sharpened / std_s
     y_ret = (y - mn_d) / std_d
     y_ret[x < eps] = -1
