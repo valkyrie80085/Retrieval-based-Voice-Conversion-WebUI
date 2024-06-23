@@ -34,8 +34,8 @@ eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 208
-multiplicity_others = 20
+multiplicity_target = 1
+multiplicity_others = 0
 max_offset = round(segment_size / 10)
 min_ratio = 0.55
 median_filter_size = 17
@@ -211,7 +211,6 @@ def preprocess_t(x, y, noise_p=None, noise_d=None):
         noise_p = preprocess_noise_amp_p
     if noise_d is None:
         noise_d = preprocess_noise_amp_d
-#    x_ret = smooth(x.squeeze(1), threshold=1.0, blur_mask=False).unsqueeze(1)
 
     x_ret = zero_sensative_blur(x)
     x_ret = interp_zero(x_ret)
@@ -228,13 +227,18 @@ def preprocess_t(x, y, noise_p=None, noise_d=None):
     return torch.cat((x_ret, y_ret), dim=1)
 
 
-def preprocess_s(x, y):
+def preprocess_s(x, y, noise_d=None):
+    if noise_d is None:
+        noise_d = preprocess_noise_amp_d
     x_blurred = zero_sensative_blur(x)
     x_blurred = interp_zero(x_blurred)
     x_ret = x.clone()
     x_ret[x < eps] = x_blurred[x < eps]
     x_ret = (x_ret - mn_p) / std_p
-    y[x < eps] = -1
+    y_ret = y.clone()
+    y_ret[x < eps] = -1
+    if noise_d != 0:
+        y_ret = y_ret + torch.randn_like(y_ret) * noise_d
     y_ret = (y - mn_d) / std_d
     return torch.cat((x_ret, y_ret), dim=1)
 
@@ -244,13 +248,6 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
         noise_p = preprocess_noise_amp_p_d
     if noise_d is None:
         noise_d = preprocess_noise_amp_d
-#    kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
-#    a_blurred = F.conv1d(a, kernel, padding="same")
-#    a_blurred[a < eps] = 0
-#    if noise_p != 0:
-#        a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
-#        a_blurred[a < eps] = 0
-#    a_blurred = (a_blurred - mn_p) / std_p
 
     a_blurred = zero_sensative_blur(a)
     a_blurred = interp_zero(a_blurred)
@@ -264,8 +261,6 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
     y_ret[a < eps] = -1
     if noise_d != 0:
         y_ret = y_ret + torch.randn_like(y_ret) * noise_d
-#    if random.randint(0, 1) == 0:
-#        y_ret = torch.zeros_like(y_ret)
     y_ret = (y_ret - mn_d) / std_d
     return torch.cat((a_blurred, x_ret, y_ret), dim=1)
 
@@ -285,7 +280,6 @@ def postprocess(x, a):
     x_ret = x.clone()
     x_ret = x * std_p + mn_p
     x_ret[a < eps] = 0
-#    x_ret[x < eps] = (2 * mel_min - mel_max - mn_p) / std_p
     return x_ret
 
 
@@ -830,7 +824,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data_p = pitch_shift_tensor(data_p, torch.randn(1, device=data_p.device) * 0.5)
 
             fakes = postprocess(net_g_t(preprocess_t(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d)), data_p.unsqueeze(1)).squeeze(1)
-            fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1))), data_p.unsqueeze(1)).squeeze(1)
+            fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d)), data_p.unsqueeze(1)).squeeze(1)
             d_data_inputs = data_p
             d_data_p = fakes.detach().clone()
             d_data_d = data_d
