@@ -34,8 +34,8 @@ eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 1
-multiplicity_others = 0
+multiplicity_target = 208
+multiplicity_others = 20
 max_offset = round(segment_size / 10)
 min_ratio = 0.55
 median_filter_size = 17
@@ -216,7 +216,6 @@ def preprocess_t(x, y, noise_p=None, noise_d=None):
     x_ret = interp_zero(x_ret)
     if noise_p != 0:
         x_ret = x_ret + torch.randn_like(x_ret) * noise_p
-
     x_ret = (x_ret - mn_p) / std_p
     y_ret = y.clone()
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
@@ -251,11 +250,12 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
 
     a_blurred = zero_sensative_blur(a)
     a_blurred = interp_zero(a_blurred)
-    x[a < eps] = a_blurred[a < eps]
+    x_ret = x.clone()
+    x_ret[a < eps] = a_blurred[a < eps]
     if noise_p != 0:
         a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
     a_blurred = (a_blurred - mn_p) / std_p
-    x_ret = (interp_zero(x) - mn_p) / std_p
+    x_ret = (x_ret - mn_p) / std_p
     y_ret = y.clone()
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
     y_ret[a < eps] = -1
@@ -269,8 +269,9 @@ def preprocess_disc_s(x, y, z):
     x_blurred = zero_sensative_blur(x)
     x_sharpened = x - x_blurred
     x_sharpened = x_sharpened / std_s
-    y[x < eps] = -1
-    y_ret = (y - mn_d) / std_d
+    y_ret = y.clone()
+    y_ret[x < eps] = -1
+    y_ret = (y_ret - mn_d) / std_d
     z[x < eps] = 0
     z_ret = (interp_zero(z) - mn_p) / std_p
     return torch.cat((x_sharpened, y, z), dim=1)
