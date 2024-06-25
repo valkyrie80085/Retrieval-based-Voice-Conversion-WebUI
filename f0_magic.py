@@ -206,14 +206,16 @@ def interp_zero(x_):
 mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
 std_s = 80
-def preprocess_t(x, y, noise_p=None, noise_d=None):
+def preprocess_t(x, y, aux=None, noise_p=None, noise_d=None):
     if noise_p is None:
         noise_p = preprocess_noise_amp_p
     if noise_d is None:
         noise_d = preprocess_noise_amp_d
 
-    x_ret = zero_sensative_blur(x)
-    x_ret = interp_zero(x_ret)
+    if aux is not None:
+        x_ret = aux
+    else:
+        x_ret = interp_zero(zero_sensative_blur(x))
     if noise_p != 0:
         x_ret = x_ret + torch.randn_like(x_ret) * noise_p
     x_ret = (x_ret - mn_p) / std_p
@@ -226,9 +228,11 @@ def preprocess_t(x, y, noise_p=None, noise_d=None):
     return torch.cat((x_ret, y_ret), dim=1)
 
 
-def preprocess_s(x, y):
-    x_blurred = zero_sensative_blur(x)
-    x_blurred = interp_zero(x_blurred)
+def preprocess_s(x, y, aux=None):
+    if aux is not None:
+        x_blurred = aux
+    else:
+        x_blurred = interp_zero(zero_sensative_blur(x))
     x_ret = x.clone()
     x_ret[x < eps] = x_blurred[x < eps]
     x_ret = (x_ret - mn_p) / std_p
@@ -238,14 +242,16 @@ def preprocess_s(x, y):
     return torch.cat((x_ret, y_ret), dim=1)
 
 
-def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
+def preprocess_disc_t(a, x, y, aux = None, noise_p=None, noise_d=None):
     if noise_p is None:
         noise_p = preprocess_noise_amp_p_d
     if noise_d is None:
         noise_d = preprocess_noise_amp_d
 
-    a_blurred = zero_sensative_blur(a)
-    a_blurred = interp_zero(a_blurred)
+    if aux is not None:
+        a_blurred = aux
+    else:
+        a_blurred = interp_zero(zero_sensative_blur(a))
     x_ret = x.clone()
     x_ret[a < eps] = a_blurred[a < eps]
     if noise_p != 0:
@@ -820,8 +826,10 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
             data_p = pitch_shift_tensor(data_p, torch.randn(1, device=data_p.device) * 0.5)
 
-            fakes = postprocess(net_g_t(preprocess_t(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d)), data_p.unsqueeze(1)).squeeze(1)
-            fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1))), data_p.unsqueeze(1)).squeeze(1)
+            aux = interp_zero(zero_sensative_blur(data_p.unsqueeze(1))).squeeze(1)
+
+            fakes = postprocess(net_g_t(preprocess_t(data_p.unsqueeze(1), data_d.unsqueeze(1), aux=aux.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d)), data_p.unsqueeze(1)).squeeze(1)
+            fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1), aux=aux.unsqueeze(1))), data_p.unsqueeze(1)).squeeze(1)
             d_data_inputs = data_p
             d_data_p = fakes.detach().clone()
             d_data_d = data_d
@@ -830,11 +838,12 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 target_data_p = data_p[labels > eps]
                 target_labels = torch.ones((target_data_p.shape[0],), device=device)
                 d_data_inputs = torch.cat((d_data_inputs, target_data_p), dim=0)
+                d_aux = torch.cat((aux, aux[labels > eps]), dim=0)
                 d_data_p = torch.cat((d_data_p, target_data_p), dim=0)
                 d_data_d = torch.cat((d_data_d, data_d[labels > eps]), dim=0)
                 d_labels = torch.cat((d_labels, target_labels), dim=0)
 
-            outputs = net_d_t(preprocess_disc_t(d_data_inputs.unsqueeze(1), d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p_d, noise_d=preprocess_noise_amp_d))
+            outputs = net_d_t(preprocess_disc_t(d_data_inputs.unsqueeze(1), d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), aux=d_aux.unsqueeze(1), noise_p=preprocess_noise_amp_p_d, noise_d=preprocess_noise_amp_d))
             loss = F.binary_cross_entropy(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))#, weight=((d_labels > eps) * (data_ratio - 1) + 1).unsqueeze(1).expand(-1, outputs.shape[1]))
             disc_loss.append(loss.item())
 
