@@ -834,6 +834,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             d_data_p = fakes.detach().clone()
             d_data_d = data_d
             d_labels = torch.zeros((d_data_p.shape[0],), device=device)
+            d_aux = aux
             if torch.sum(labels > eps) > 0:
                 target_data_p = data_p[labels > eps]
                 target_labels = torch.ones((target_data_p.shape[0],), device=device)
