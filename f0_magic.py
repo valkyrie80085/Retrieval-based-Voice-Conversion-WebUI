@@ -839,7 +839,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 target_data_p = data_p[labels > eps]
                 target_labels = torch.ones((target_data_p.shape[0],), device=device)
                 d_data_inputs = torch.cat((d_data_inputs, target_data_p), dim=0)
-                d_aux = torch.cat((aux, aux[labels > eps]), dim=0)
+                d_aux = torch.cat((d_aux, aux[labels > eps]), dim=0)
                 d_data_p = torch.cat((d_data_p, target_data_p), dim=0)
                 d_data_d = torch.cat((d_data_d, data_d[labels > eps]), dim=0)
                 d_labels = torch.cat((d_labels, target_labels), dim=0)
@@ -870,7 +870,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             g_data_p = fakes
             g_labels = torch.zeros((g_data_p.shape[0],), device=device)
-            outputs = net_d_t(preprocess_disc_t(data_p.unsqueeze(1), g_data_p.unsqueeze(1), data_d.unsqueeze(1), noise_d=preprocess_noise_amp_d))
+            outputs = net_d_t(preprocess_disc_t(data_p.unsqueeze(1), g_data_p.unsqueeze(1), data_d.unsqueeze(1),aux=aux.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))
 
             loss_total = 0
             loss = -F.binary_cross_entropy(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
