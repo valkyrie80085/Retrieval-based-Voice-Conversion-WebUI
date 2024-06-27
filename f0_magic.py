@@ -24,8 +24,6 @@ from infer.modules.vc.utils import load_hubert
 from f0_magic_gen import PitchContourGenerator, segment_size
 from f0_magic_disc import PitchContourDiscriminator
 
-import xitorch.interpolate
-
 padding_size = 2 * segment_size
 
 config = Config()
@@ -177,11 +175,6 @@ def snap(x, sensitivity):
     return x_snapped
 
 
-def blur(x):
-    kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
-    return F.conv1d(x, kernel, padding="same")
-
-
 def zero_sensative_blur(x):
     x_ones = torch.zeros_like(x)
     x_ones[x > eps] = 1
@@ -193,76 +186,60 @@ def zero_sensative_blur(x):
     return x_blurred
 
 
-def interp_zero(x_):
-    x = x_.clone().view(-1, x_.shape[-1])
-    for i in range(x.shape[0]):
-        if torch.sum(x[i] > eps) > 0:
-            indices = torch.nonzero(x[i] > eps).squeeze(1).float()
-            values = x[i, x[i] > eps]
-            x[i] = xitorch.interpolate.Interp1D(indices, values, method="linear", extrap="bound")(torch.arange(x.shape[1], device=x.device).float())
-    return x.view(x_.shape)
-
-
 mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
 std_s = 80
-def preprocess_t(x, y, aux=None, noise_p=None, noise_d=None):
+def preprocess_t(x, y, noise_p=None, noise_d=None):
     if noise_p is None:
         noise_p = preprocess_noise_amp_p
     if noise_d is None:
         noise_d = preprocess_noise_amp_d
+#    x_ret = smooth(x.squeeze(1), threshold=1.0, blur_mask=False).unsqueeze(1)
 
-    if aux is not None:
-        x_ret = aux
-    else:
-        x_ret = interp_zero(zero_sensative_blur(x))
+    x_ret = zero_sensative_blur(x)
     if noise_p != 0:
         x_ret = x_ret + torch.randn_like(x_ret) * noise_p
+
     x_ret = (x_ret - mn_p) / std_p
     y_ret = y.clone()
+    y_ret[x < eps] = 0
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
-    y_ret[x < eps] = -1
     if noise_d != 0:
         y_ret = y_ret + torch.randn_like(y_ret) * noise_d
     y_ret = (y_ret - mn_d) / std_d
     return torch.cat((x_ret, y_ret), dim=1)
 
 
-def preprocess_s(x, y, aux=None):
-    if aux is not None:
-        x_blurred = aux
-    else:
-        x_blurred = interp_zero(zero_sensative_blur(x))
-    x_ret = x.clone()
-    x_ret[x < eps] = x_blurred[x < eps]
-    x_ret = (x_ret - mn_p) / std_p
-    y_ret = y.clone()
-    y_ret[x < eps] = -1
+def preprocess_s(x, y):
+    x_ret = (x - mn_p) / std_p
     y_ret = (y - mn_d) / std_d
     return torch.cat((x_ret, y_ret), dim=1)
 
 
-def preprocess_disc_t(a, x, y, aux = None, noise_p=None, noise_d=None):
+def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
     if noise_p is None:
         noise_p = preprocess_noise_amp_p_d
     if noise_d is None:
         noise_d = preprocess_noise_amp_d
-
-    if aux is not None:
-        a_blurred = aux
-    else:
-        a_blurred = interp_zero(zero_sensative_blur(a))
-    x_ret = x.clone()
-    x_ret[a < eps] = a_blurred[a < eps]
+#    kernel = gaussian_kernel1d_torch(gaussian_filter_sigma)
+#    a_blurred = F.conv1d(a, kernel, padding="same")
+#    a_blurred[a < eps] = 0
+#    if noise_p != 0:
+#        a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
+#        a_blurred[a < eps] = 0
+#    a_blurred = (a_blurred - mn_p) / std_p
+    a_blurred = zero_sensative_blur(a)
     if noise_p != 0:
         a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
     a_blurred = (a_blurred - mn_p) / std_p
-    x_ret = (x_ret - mn_p) / std_p
+    x_ret = (x - mn_p) / std_p
     y_ret = y.clone()
+    y_ret[a < eps] = 0
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
-    y_ret[a < eps] = -1
     if noise_d != 0:
         y_ret = y_ret + torch.randn_like(y_ret) * noise_d
+#    if random.randint(0, 1) == 0:
+#        y_ret = torch.zeros_like(y_ret)
     y_ret = (y_ret - mn_d) / std_d
     return torch.cat((a_blurred, x_ret, y_ret), dim=1)
 
@@ -271,18 +248,16 @@ def preprocess_disc_s(x, y, z):
     x_blurred = zero_sensative_blur(x)
     x_sharpened = x - x_blurred
     x_sharpened = x_sharpened / std_s
-    y_ret = y.clone()
-    y_ret[x < eps] = -1
-    y_ret = (y_ret - mn_d) / std_d
-    z[x < eps] = 0
-    z_ret = (interp_zero(z) - mn_p) / std_p
+    y_ret = (y - mn_d) / std_d
+    z_ret = (z - mn_p) / std_p
     return torch.cat((x_sharpened, y, z), dim=1)
 
 
-def postprocess(x, a):
+def postprocess(x):
     x_ret = x.clone()
     x_ret = x * std_p + mn_p
-    x_ret[a < eps] = 0
+    x_ret[x_ret < mel_min * 0.5] = 0
+#    x_ret[x < eps] = (2 * mel_min - mel_max - mn_p) / std_p
     return x_ret
 
 
@@ -372,7 +347,7 @@ def compute_f0_inference(path, index_file=""):
         from infer.lib.rmvpe import RMVPE
         print("Loading rmvpe model")
         model_rmvpe = RMVPE(
-            "assets/rmvpe/rmvpe.pt", is_half=False, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+            "assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
     f0 = model_rmvpe.infer_from_audio(x, thred=0.03)
 
     # Pick a batch size that doesn't cause memory errors on your gpu
@@ -440,7 +415,7 @@ def compute_f0(path):
         from infer.lib.rmvpe import RMVPE
         print("Loading rmvpe model")
         model_rmvpe = RMVPE(
-            "assets/rmvpe/rmvpe.pt", is_half=False, device=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+            "assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
     f0 = model_rmvpe.infer_from_audio(x, thred=0.03)
 
     # Pick a batch size that doesn't cause memory errors on your gpu
@@ -508,7 +483,7 @@ def compute_d(path):
         audio, orig_sr=44100, target_sr=16000
     )
 
-    feats = extract_features_simple(audio, model=hubert_model, version="v2", device=torch.device("cuda" if torch.cuda.is_available() else "cpu"), is_half=config.is_half)
+    feats = extract_features_simple(audio, model=hubert_model, version="v2", device="cuda", is_half=config.is_half)
     npy = feats[0].cpu().numpy()
 
     feats_diff = np.pad(np.linalg.norm(npy[:-1] - npy[1:], axis=1), (1, 0))
@@ -826,25 +801,21 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
             data_p = pitch_shift_tensor(data_p, torch.randn(1, device=data_p.device) * 0.5)
 
-            aux = interp_zero(zero_sensative_blur(data_p.unsqueeze(1))).squeeze(1)
-
-            fakes = postprocess(net_g_t(preprocess_t(data_p.unsqueeze(1), data_d.unsqueeze(1), aux=aux.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d)), data_p.unsqueeze(1)).squeeze(1)
-            fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1), aux=aux.unsqueeze(1))), data_p.unsqueeze(1)).squeeze(1)
+            fakes = postprocess(net_g_t(preprocess_t(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))).squeeze(1)
+            fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1)
             d_data_inputs = data_p
             d_data_p = fakes.detach().clone()
             d_data_d = data_d
             d_labels = torch.zeros((d_data_p.shape[0],), device=device)
-            d_aux = aux
             if torch.sum(labels > eps) > 0:
                 target_data_p = data_p[labels > eps]
                 target_labels = torch.ones((target_data_p.shape[0],), device=device)
                 d_data_inputs = torch.cat((d_data_inputs, target_data_p), dim=0)
-                d_aux = torch.cat((d_aux, aux[labels > eps]), dim=0)
                 d_data_p = torch.cat((d_data_p, target_data_p), dim=0)
                 d_data_d = torch.cat((d_data_d, data_d[labels > eps]), dim=0)
                 d_labels = torch.cat((d_labels, target_labels), dim=0)
 
-            outputs = net_d_t(preprocess_disc_t(d_data_inputs.unsqueeze(1), d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), aux=d_aux.unsqueeze(1), noise_p=preprocess_noise_amp_p_d, noise_d=preprocess_noise_amp_d))
+            outputs = net_d_t(preprocess_disc_t(d_data_inputs.unsqueeze(1), d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p_d, noise_d=preprocess_noise_amp_d))
             loss = F.binary_cross_entropy(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))#, weight=((d_labels > eps) * (data_ratio - 1) + 1).unsqueeze(1).expand(-1, outputs.shape[1]))
             disc_loss.append(loss.item())
 
@@ -870,7 +841,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             g_data_p = fakes
             g_labels = torch.zeros((g_data_p.shape[0],), device=device)
-            outputs = net_d_t(preprocess_disc_t(data_p.unsqueeze(1), g_data_p.unsqueeze(1), data_d.unsqueeze(1),aux=aux.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))
+            outputs = net_d_t(preprocess_disc_t(data_p.unsqueeze(1), g_data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p_d, noise_d=preprocess_noise_amp_d))
 
             loss_total = 0
             loss = -F.binary_cross_entropy(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
