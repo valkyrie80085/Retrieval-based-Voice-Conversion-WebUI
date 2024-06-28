@@ -52,7 +52,7 @@ EPOCH_PER_BAK = 5
 lr_g = 1e-5
 lr_d = 1e-5
 c_loss_factor_t = 1
-c_loss_factor_s = 1
+c_loss_factor_s = 0.3
 c_loss_goal_t = 10
 c_loss_goal_s = 0
 
@@ -659,6 +659,7 @@ def load_data():
                         contour_final = pitch_shift_mel(contour_sliced, shift_real)
                         phone_diff_final = phone_diff_sliced
                         others_data.append((torch.tensor(contour_final, dtype=torch.float32), torch.tensor(phone_diff_final, dtype=torch.float32)))
+                        
 
     print("Train target data count:", len(train_target_data))
     print("Train others data count:", len(train_others_data))
@@ -803,6 +804,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             fakes = postprocess(net_g_t(preprocess_t(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))).squeeze(1)
             fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1)
+            fakes_s = fakes_s[labels < eps]
             d_data_inputs = data_p
             d_data_p = fakes.detach().clone()
             d_data_d = data_d
@@ -824,10 +826,10 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 loss.backward()
                 optimizer_d_t.step()
 
-                d_s_data_in = torch.cat((data_p, data_p), dim=0)
-                d_s_data_d = torch.cat((data_d, data_d), dim=0)
+                d_s_data_in = torch.cat((data_p, data_p[labels < eps]), dim=0)
+                d_s_data_d = torch.cat((data_d, data_d[labels < eps]), dim=0)
                 d_s_data_out = torch.cat((fakes.detach(), fakes_s.detach()), dim=0)
-                d_s_labels = torch.cat((torch.ones((data_p.shape[0],), device=device), torch.zeros((data_p.shape[0],), device=device)), dim=0)
+                d_s_labels = torch.cat((torch.ones((data_p.shape[0],), device=device), torch.zeros((fakes_s.shape[0],), device=device)), dim=0)
 
                 outputs = net_d_s(preprocess_disc_s(d_s_data_in.unsqueeze(1), d_s_data_d.unsqueeze(1), d_s_data_out.unsqueeze(1)))
                 loss = F.binary_cross_entropy(outputs, d_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
@@ -857,23 +859,24 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 loss_total.backward()
                 optimizer_g_t.step()
 
-            g_s_data_p = fakes_s
-            g_s_labels = torch.zeros((g_s_data_p.shape[0],), device=device)
-            outputs = net_d_s(preprocess_disc_s(data_p.unsqueeze(1), data_d.unsqueeze(1), g_s_data_p.unsqueeze(1)))
+            if len(fakes_s) > 0:
+                g_s_data_p = fakes_s
+                g_s_labels = torch.zeros((g_s_data_p.shape[0],), device=device)
+                outputs = net_d_s(preprocess_disc_s(data_p[labels < eps].unsqueeze(1), data_d[labels < eps].unsqueeze(1), g_s_data_p.unsqueeze(1)))
 
-            loss_total = 0
-            loss = F.binary_cross_entropy(outputs, 1 - g_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
-            loss_total = loss
-            imitation_loss.append(loss.item())
+                loss_total = 0
+                loss = F.binary_cross_entropy(outputs, 1 - g_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+                loss_total = loss
+                imitation_loss.append(loss.item())
 
-            loss = get_contrastive_loss_s(fakes_s, data_p)
-            loss_total += loss * c_loss_factor_s
-            contrastive_loss_s.append(loss.item())
+                loss = get_contrastive_loss_s(fakes_s, data_p[labels < eps])
+                loss_total += loss * c_loss_factor_s
+                contrastive_loss_s.append(loss.item())
 
-            if is_train:
-                optimizer_g_s.zero_grad()
-                loss_total.backward()
-                optimizer_g_s.step()
+                if is_train:
+                    optimizer_g_s.zero_grad()
+                    loss_total.backward()
+                    optimizer_g_s.step()
 
 
         train_disc_loss = []
