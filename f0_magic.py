@@ -32,10 +32,12 @@ eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 208
+multiplicity_target = 191
 multiplicity_others = 20
 max_offset = round(segment_size / 10)
 min_ratio = 0.55
+gap_variation = 1 / 3
+
 median_filter_size = 17
 gaussian_filter_sigma = 8
 preprocess_noise_amp_p = 10
@@ -589,6 +591,28 @@ def modify_ends(contour):
 
 
 def load_data():
+    def retime_gaps(f0, phone_diff):
+        cuts = np.where((f0[1:] < eps) != (f0[:-1] < eps))[0] + 1
+        f0_segments = np.split(f0, cuts)
+        phone_diff_segments = np.split(phone_diff, cuts)
+        segments = []
+        segments_phone_diff = []
+        for segment, segment_phone_diff in zip(f0_segments, phone_diff_segments):
+            if segment[0] < eps:
+                scale = np.random.normal(scale=gap_variation)
+                if scale > 0:
+                    scale = 2 - math.exp(-scale)
+                else:
+                    scale = math.exp(scale)
+                zeros_length = max(1, round(segment.shape[0] * scale))
+                segments.append(np.zeros(zeros_length))
+                segments_phone_diff.append(np.zeros(zeros_length))
+            else:
+                segments.append(segment)
+                segments_phone_diff.append(segment_phone_diff)
+        return np.concatenate(segments), np.concatenate(segments_phone_diff)
+
+
     prepare_data()
     train_target_data = []
     train_others_data = []
@@ -608,23 +632,25 @@ def load_data():
                 target_data, others_data = train_target_data, train_others_data
             filename_p = os.path.splitext(filename)[0] + " p.npy"
             filename_d = os.path.splitext(filename)[0] + " d.npy"
-            contour = np.load(filename_p)
-            phone_diff = resize(np.load(filename_d), len(contour))
-            if contour.shape[0] < segment_size:
-                phone_diff = np.pad(phone_diff, (0, segment_size - contour.shape[0]))
-                contour = np.pad(contour, (0, segment_size - contour.shape[0]))
-            contour = np.pad(contour, (padding_size + max_offset, padding_size))
-            phone_diff = np.pad(phone_diff, (padding_size + max_offset, padding_size))
-            for i in range(round(multiplicity_target * (contour.shape[0] - max_offset - 2 * padding_size) / segment_size) + 1):
-                start = random.randint(padding_size + max_offset, contour.shape[0] - padding_size - segment_size)
-                contour_sliced = contour[start - padding_size - max_offset:start + padding_size + segment_size].copy()
-                phone_diff_sliced = phone_diff[start - padding_size - max_offset:start + padding_size + segment_size].copy()
-                if np.sum(contour_sliced[padding_size:-padding_size] > eps) > segment_size * min_ratio:
-                    average = get_average(contour_sliced[contour_sliced > eps]) / 1127
-                    target_averages.append(average)
-                    contour_final = contour_sliced
-                    phone_diff_final = phone_diff_sliced
-                    target_data.append((torch.tensor(contour_final, dtype=torch.float32), torch.tensor(phone_diff_final, dtype=torch.float32)))
+            contour_ = np.load(filename_p)
+            phone_diff_ = resize(np.load(filename_d), len(contour_))
+            for repetition in range(multiplicity_target):
+                contour, phone_diff = retime_gaps(contour_, phone_diff_)
+                if contour.shape[0] < segment_size:
+                    phone_diff = np.pad(phone_diff, (0, segment_size - contour.shape[0]))
+                    contour = np.pad(contour, (0, segment_size - contour.shape[0]))
+                contour = np.pad(contour, (padding_size + max_offset, padding_size))
+                phone_diff = np.pad(phone_diff, (padding_size + max_offset, padding_size))
+                for i in range(round((contour.shape[0] - max_offset - 2 * padding_size) / segment_size) + 1):
+                    start = random.randint(padding_size + max_offset, contour.shape[0] - padding_size - segment_size)
+                    contour_sliced = contour[start - padding_size - max_offset:start + padding_size + segment_size].copy()
+                    phone_diff_sliced = phone_diff[start - padding_size - max_offset:start + padding_size + segment_size].copy()
+                    if np.sum(contour_sliced[padding_size:-padding_size] > eps) > segment_size * min_ratio:
+                        average = get_average(contour_sliced[contour_sliced > eps]) / 1127
+                        target_averages.append(average)
+                        contour_final = contour_sliced
+                        phone_diff_final = phone_diff_sliced
+                        target_data.append((torch.tensor(contour_final, dtype=torch.float32), torch.tensor(phone_diff_final, dtype=torch.float32)))
 
     if multiplicity_others > 0:
         for filename in walk(OTHERS_PATH):
@@ -635,30 +661,32 @@ def load_data():
                     target_data, others_data = train_target_data, train_others_data
                 filename_p = os.path.splitext(filename)[0] + " p.npy"
                 filename_d = os.path.splitext(filename)[0] + " d.npy"
-                contour = np.load(filename_p)
-                phone_diff = resize(np.load(filename_d), len(contour))
-                if contour.shape[0] < segment_size:
-                    phone_diff = np.pad(phone_diff, (0, segment_size - contour.shape[0]))
-                    contour = np.pad(contour, (0, segment_size - contour.shape[0]))
-                contour = np.pad(contour, (padding_size + max_offset, padding_size))
-                phone_diff = np.pad(phone_diff, (padding_size + max_offset, padding_size))
-                for i in range(round(multiplicity_others * (contour.shape[0] - max_offset - 2 * padding_size) / segment_size)):
-                    start = random.randint(padding_size + max_offset, contour.shape[0] - padding_size - segment_size)
-                    use_original = False#random.randint(0, 4) == 0
-                    contour_sliced = contour[start - padding_size - max_offset:start + padding_size + segment_size].copy()
-                    phone_diff_sliced = phone_diff[start - padding_size - max_offset:start + padding_size + segment_size].copy()
-                    if np.sum(contour_sliced[padding_size:-padding_size] > eps) > segment_size * min_ratio:
-                        if use_original:
-                            shift_real = 0
-                        else:
-                            average = get_average(contour_sliced[contour_sliced > eps]) / 1127
-                            average_goal = random.choice(target_averages)
-                            average = (math.exp(average) - 1) * 700
-                            average_goal = (math.exp(average_goal) - 1) * 700
-                            shift_real = math.log(average_goal / average) / math.log(2) * 12
-                        contour_final = pitch_shift_mel(contour_sliced, shift_real)
-                        phone_diff_final = phone_diff_sliced
-                        others_data.append((torch.tensor(contour_final, dtype=torch.float32), torch.tensor(phone_diff_final, dtype=torch.float32)))
+                contour_ = np.load(filename_p)
+                phone_diff_ = resize(np.load(filename_d), len(contour_))
+                for repetition in range(multiplicity_others):
+                    contour, phone_diff = retime_gaps(contour_, phone_diff_)
+                    if contour.shape[0] < segment_size:
+                        phone_diff = np.pad(phone_diff, (0, segment_size - contour.shape[0]))
+                        contour = np.pad(contour, (0, segment_size - contour.shape[0]))
+                    contour = np.pad(contour, (padding_size + max_offset, padding_size))
+                    phone_diff = np.pad(phone_diff, (padding_size + max_offset, padding_size))
+                    for i in range(round((contour.shape[0] - max_offset - 2 * padding_size) / segment_size)):
+                        start = random.randint(padding_size + max_offset, contour.shape[0] - padding_size - segment_size)
+                        use_original = False#random.randint(0, 4) == 0
+                        contour_sliced = contour[start - padding_size - max_offset:start + padding_size + segment_size].copy()
+                        phone_diff_sliced = phone_diff[start - padding_size - max_offset:start + padding_size + segment_size].copy()
+                        if np.sum(contour_sliced[padding_size:-padding_size] > eps) > segment_size * min_ratio:
+                            if use_original:
+                                shift_real = 0
+                            else:
+                                average = get_average(contour_sliced[contour_sliced > eps]) / 1127
+                                average_goal = random.choice(target_averages)
+                                average = (math.exp(average) - 1) * 700
+                                average_goal = (math.exp(average_goal) - 1) * 700
+                                shift_real = math.log(average_goal / average) / math.log(2) * 12
+                            contour_final = pitch_shift_mel(contour_sliced, shift_real)
+                            phone_diff_final = phone_diff_sliced
+                            others_data.append((torch.tensor(contour_final, dtype=torch.float32), torch.tensor(phone_diff_final, dtype=torch.float32)))
                         
 
     print("Train target data count:", len(train_target_data))
@@ -968,6 +996,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
 if __name__ == "__main__":
     random.seed(42)
+    np.random.seed(42)
 
     train_target_data, train_others_data, test_target_data, test_others_data = load_data()
     train_model("model", train_target_data, train_others_data, test_target_data, test_others_data)
