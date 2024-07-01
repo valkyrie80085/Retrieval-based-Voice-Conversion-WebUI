@@ -922,7 +922,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         train_gen_loss = np.mean(train_gen_loss)
         train_contrastive_loss_s = np.mean(train_contrastive_loss_s)
         train_imitation_loss = np.mean(train_imitation_loss)
-        train_loss = (train_contrastive_loss_t + train_contrastive_loss_s) * c_loss_factor_s + train_gen_loss + train_imitation_loss
+        train_loss = train_contrastive_loss_t * c_loss_factor_t + train_contrastive_loss_s * c_loss_factor_s + train_gen_loss + train_imitation_loss
 
         if USE_TEST_SET:
             test_disc_loss = []
@@ -940,7 +940,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             test_gen_loss = np.mean(test_gen_loss)
             test_contrastive_loss_s = np.mean(test_contrastive_loss_s)
             test_imitation_loss = np.mean(test_imitation_loss)
-            test_loss = (test_contrastive_loss_t + test_contrastive_loss_s) * c_loss_factor_s + test_gen_loss + test_imitation_loss
+            test_loss = test_contrastive_loss_t * c_loss_factor_t + test_contrastive_loss_s * c_loss_factor_s + test_gen_loss + test_imitation_loss
 
 
         if epoch % 1 == 0:
