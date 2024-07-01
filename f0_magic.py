@@ -995,8 +995,8 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
 
 if __name__ == "__main__":
-    random.seed(42)
-    np.random.seed(42)
+#    random.seed(42)
+#    np.random.seed(42)
 
     train_target_data, train_others_data, test_target_data, test_others_data = load_data()
     train_model("model", train_target_data, train_others_data, test_target_data, test_others_data)
