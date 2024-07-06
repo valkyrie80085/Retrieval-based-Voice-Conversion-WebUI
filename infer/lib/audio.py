@@ -5,6 +5,8 @@ import traceback
 import librosa
 import numpy as np
 import av
+from io import BytesIO
+import traceback
 
 import torch, torchcrepe
 
