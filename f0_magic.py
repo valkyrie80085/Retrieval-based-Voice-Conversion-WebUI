@@ -982,16 +982,17 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             print(f"Data saved.")
         if True:#(USE_TEST_SET and test_loss < best_loss) or ((not USE_TEST_SET) and train_loss < best_loss):
             #            best_loss = test_loss if USE_TEST_SET else train_loss 
-            BAK_FILE = name + " " + str(epoch // EPOCH_PER_BAK * EPOCH_PER_BAK) + ".pt"
-            BAK_FILE_T = name + " t " + str(epoch // EPOCH_PER_BAK * EPOCH_PER_BAK) + ".pt"
-            while True:
-                try:
-                    torch.save(net_g_s.state_dict(), BAK_FILE) 
-                    torch.save(net_g_t.state_dict(), BAK_FILE_T) 
-                    break
-                except:
-                    pass
-            print(f"Model backed up to '{BAK_FILE:s}'")
+            if epoch % EPOCH_PER_BAK == 0:
+                BAK_FILE = name + " " + str(epoch) + ".pt"
+                BAK_FILE_T = name + " t " + str(epoch) + ".pt"
+                while True:
+                    try:
+                        torch.save(net_g_s.state_dict(), BAK_FILE) 
+                        torch.save(net_g_t.state_dict(), BAK_FILE_T) 
+                        break
+                    except:
+                        pass
+                print(f"Model backed up to '{BAK_FILE:s}'")
 
 
 if __name__ == "__main__":
