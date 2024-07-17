@@ -746,10 +746,10 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     net_d_t = PitchContourDiscriminator().to(device)
     net_g_s = PitchContourGenerator().to(device)
     net_d_s = PitchContourDiscriminator().to(device)
-    optimizer_g_t = optim.AdamW(net_g_t.parameters(), lr=lr_g)
-    optimizer_d_t = optim.AdamW(net_d_t.parameters(), lr=lr_d)
-    optimizer_g_s = optim.AdamW(net_g_s.parameters(), lr=lr_g)
-    optimizer_d_s = optim.AdamW(net_d_s.parameters(), lr=lr_d)
+    optimizer_g_t = optim.Adam(net_g_t.parameters(), lr=lr_g)
+    optimizer_d_t = optim.Adam(net_d_t.parameters(), lr=lr_d)
+    optimizer_g_s = optim.Adam(net_g_s.parameters(), lr=lr_g)
+    optimizer_d_s = optim.Adam(net_d_s.parameters(), lr=lr_d)
     epoch = 0
 
     MODEL_FILE = name + ".pt"
@@ -782,10 +782,10 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         net_d_t = PitchContourDiscriminator().to(device)
         net_g_s = PitchContourGenerator().to(device)
         net_d_s = PitchContourDiscriminator().to(device)
-        optimizer_g_t = optim.AdamW(net_g_t.parameters(), lr=lr_g)
-        optimizer_d_t = optim.AdamW(net_d_t.parameters(), lr=lr_d)
-        optimizer_g_s = optim.AdamW(net_g_s.parameters(), lr=lr_g)
-        optimizer_d_s = optim.AdamW(net_d_s.parameters(), lr=lr_d)
+        optimizer_g_t = optim.Adam(net_g_t.parameters(), lr=lr_g)
+        optimizer_d_t = optim.Adam(net_d_t.parameters(), lr=lr_d)
+        optimizer_g_s = optim.Adam(net_g_s.parameters(), lr=lr_g)
+        optimizer_d_s = optim.Adam(net_d_s.parameters(), lr=lr_d)
         print("Model initialized with random weights")
 
     train_dataset = torch.utils.data.TensorDataset(train_target_data_p, train_target_data_d, torch.ones((len(train_target_data),)))
