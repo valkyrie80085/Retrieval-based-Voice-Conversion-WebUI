@@ -75,4 +75,3 @@ for filename in walk(WORK_PATH):
         modified_contour_mel[input_contour_mel < eps] = 0
         #modified_contour = pitch_blur(modified_contour, 1, 1, 1)
         np.save(output_file, modified_contour_mel)
-
