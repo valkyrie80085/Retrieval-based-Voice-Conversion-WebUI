@@ -21,7 +21,6 @@ with open('f0_test_config.json', 'r') as openfile:
     data = json.load(openfile)
     model_path = data["model_path"]
     index_file = data["index_file"]
-    pitch_shift = float(data["pitch_shift"])
     try:
         if data["model_type"].lower().startswith("t"):
             preprocess = preprocess_t
@@ -55,8 +54,7 @@ for filename in walk(WORK_PATH):
         output_file = os.path.splitext(audio_file)[0] + " p.npy"
         input_contour_mel = np.load(input_file_p)
         input_phone_diff = resize(np.load(input_file_d), len(input_contour_mel))
-        modified_contour_mel = pitch_shift_mel(input_contour_mel, pitch_shift)
-        modified_contour_mel = np.pad(modified_contour_mel, (padding_size, padding_size))
+        modified_contour_mel = np.pad(input_contour_mel, (padding_size, padding_size))
         input_phone_diff_pad = np.pad(input_phone_diff, (padding_size, padding_size))
         extra = segment_size - ((len(modified_contour_mel) - 1) % segment_size + 1)
         modified_contour_mel = np.pad(modified_contour_mel, (extra, 0))
