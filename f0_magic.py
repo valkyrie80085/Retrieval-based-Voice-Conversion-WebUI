@@ -395,7 +395,6 @@ def compute_f0_inference(path, index_file=""):
     target_len = x.shape[0] // window_length
     f0_mel = resize_with_zeros(f0_mel, target_len)
 
-    model_rmvpe = None
     f0_mel = trim_f0(f0_mel, x, index_file)
 
     f0_mel = trim_sides_mel(f0_mel, frames_per_sec)
@@ -513,6 +512,7 @@ def prepare_data():
                 np.save(npy_file_d, compute_d(filename))
             except:
                 pass
+    model_rmvpe = None
 
 
 def pitch_shift_mel(contour, semitones):
