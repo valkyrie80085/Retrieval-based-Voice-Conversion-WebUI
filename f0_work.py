@@ -67,11 +67,7 @@ for filename in walk(WORK_PATH):
         modified_contour_mel = modified_contour_mel_tensor.detach().cpu().numpy()
         modified_contour_mel = modified_contour_mel[extra:]
         modified_contour_mel = modified_contour_mel[padding_size:-padding_size]
-        #modified_contour_mel = median_filter(modified_contour_mel, size=17)
-        #modified_contour_mel = modify_contour_mel(model, modified_contour_mel, threshold=threshold)
-        #modified_contour_mel = pitch_shift_mel(modified_contour_mel, 0)
 
 
         modified_contour_mel[input_contour_mel < eps] = 0
-        #modified_contour = pitch_blur(modified_contour, 1, 1, 1)
         np.save(output_file, modified_contour_mel)
