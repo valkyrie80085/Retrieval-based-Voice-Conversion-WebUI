@@ -32,7 +32,7 @@ eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-multiplicity_target = 191
+multiplicity_target = 172
 multiplicity_others = 20
 max_offset = round(segment_size / 10)
 min_ratio = 0.55
