@@ -209,6 +209,7 @@ def preprocess_t(x, y, noise_p=None, noise_d=None):
     if noise_d != 0:
         y_ret = y_ret + torch.randn_like(y_ret) * noise_d
     y_ret = (y_ret - mn_d) / std_d
+
     return torch.cat((x_ret, y_ret), dim=1)
 
 
@@ -230,10 +231,12 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
 #        a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
 #        a_blurred[a < eps] = 0
 #    a_blurred = (a_blurred - mn_p) / std_p
+
     a_blurred = zero_sensative_blur(a)
     if noise_p != 0:
         a_blurred = a_blurred + torch.randn_like(a_blurred) * noise_p
     a_blurred = (a_blurred - mn_p) / std_p
+
     x_ret = (x - mn_p) / std_p
     y_ret = y.clone()
     y_ret[a < eps] = 0
@@ -243,16 +246,20 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
 #    if random.randint(0, 1) == 0:
 #        y_ret = torch.zeros_like(y_ret)
     y_ret = (y_ret - mn_d) / std_d
+
     return torch.cat((a_blurred, x_ret, y_ret), dim=1)
 
 
 def preprocess_disc_s(x, y, z):
-    x_blurred = zero_sensative_blur(x)
-    x_sharpened = x - x_blurred
-    x_sharpened = x_sharpened / std_s
+#    x_blurred = zero_sensative_blur(x)
+#    x_sharpened = x - x_blurred
+#    x_sharpened = x_sharpened / std_s
+
     y_ret = (y - mn_d) / std_d
     z_ret = (z - mn_p) / std_p
-    return torch.cat((x_sharpened, y, z), dim=1)
+
+#    return torch.cat((x_sharpened, y, z), dim=1)
+    return torch.cat((y, z), dim=1)
 
 
 def postprocess(x):
@@ -743,9 +750,9 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         test_others_data_d = torch.stack(tuple(phone_diff for pitch, phone_diff in test_others_data))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     net_g_t = PitchContourGenerator().to(device)
-    net_d_t = PitchContourDiscriminator().to(device)
+    net_d_t = PitchContourDiscriminator(3).to(device)
     net_g_s = PitchContourGenerator().to(device)
-    net_d_s = PitchContourDiscriminator().to(device)
+    net_d_s = PitchContourDiscriminator(2).to(device)
     optimizer_g_t = optim.Adam(net_g_t.parameters(), lr=lr_g)
     optimizer_d_t = optim.Adam(net_d_t.parameters(), lr=lr_d)
     optimizer_g_s = optim.Adam(net_g_s.parameters(), lr=lr_g)
@@ -779,9 +786,9 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     except:
         epoch = 0
         net_g_t = PitchContourGenerator().to(device)
-        net_d_t = PitchContourDiscriminator().to(device)
+        net_d_t = PitchContourDiscriminator(3).to(device)
         net_g_s = PitchContourGenerator().to(device)
-        net_d_s = PitchContourDiscriminator().to(device)
+        net_d_s = PitchContourDiscriminator(2).to(device)
         optimizer_g_t = optim.Adam(net_g_t.parameters(), lr=lr_g)
         optimizer_d_t = optim.Adam(net_d_t.parameters(), lr=lr_d)
         optimizer_g_s = optim.Adam(net_g_s.parameters(), lr=lr_g)

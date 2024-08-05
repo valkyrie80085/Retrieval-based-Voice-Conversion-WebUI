@@ -11,14 +11,14 @@ kernel_size_conv = [5, 5, 5, 5, 5]
 kernel_size_pool = [3, 3, 3, 3, 3]
 fc_width = [3, 7, 3, 9, 5, 2]
 class PitchContourDiscriminatorP(nn.Module):
-    def __init__(self, p, t):
+    def __init__(self, c, p, t):
         super(PitchContourDiscriminatorP, self).__init__()
         self.p = p
         self.t = t
         self.convs = nn.ModuleList([])
         self.pools = nn.ModuleList([])
         for i in range(depth[self.p]):
-            self.convs.append(nn.Conv1d(in_channels=3 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
+            self.convs.append(nn.Conv1d(in_channels=c if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
             self.convs.append(nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]))
             self.pools.append(nn.MaxPool1d(kernel_size=kernel_size_pool[i]))
         self.fc1 = nn.Linear(channels[depth[self.p] - 1] * fc_width[self.p], channels[depth[self.p] - 1] // 2)
@@ -46,13 +46,13 @@ class PitchContourDiscriminatorP(nn.Module):
 
 
 class PitchContourDiscriminator(nn.Module):
-    def __init__(self):
+    def __init__(self, c):
         super(PitchContourDiscriminator, self).__init__()
         self.discs = nn.ModuleList([])
         for i in range(len(periods)):
-            self.discs.append(PitchContourDiscriminatorP(i, False))
+            self.discs.append(PitchContourDiscriminatorP(c, i, False))
             if periods[i] > 1:
-                self.discs.append(PitchContourDiscriminatorP(i, True))
+                self.discs.append(PitchContourDiscriminatorP(c, i, True))
 
 
     def forward(self, x):
