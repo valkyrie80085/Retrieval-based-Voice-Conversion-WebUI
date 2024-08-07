@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import torch.optim as optim
 
-bn_momentum = 1e-4
+bn_momentum = 1e-3
 
 periods = [1, 2, 3, 5, 7, 11]
 segment_size = [1939, 1934, 1929, 1865, 1855, 2024]

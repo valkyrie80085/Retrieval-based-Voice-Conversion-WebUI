@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import torch.optim as optim
 
-bn_momentum = 1e-4
+bn_momentum = 1e-3
 
 segment_size = 2187
 channels = [64, 128, 256, 512, 512, 1024, 1024]
