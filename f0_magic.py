@@ -33,7 +33,7 @@ mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
 multiplicity_target = 172
-multiplicity_others = 20
+multiplicity_others = 10
 max_offset = round(segment_size / 10)
 min_ratio = 0.55
 gap_variation = 1 / 3
@@ -46,6 +46,7 @@ preprocess_noise_amp_d = 0.1
 data_noise_amp_p = 5
 label_noise_amp_p = 0.1
 d_clip_threshold = 4.5
+STUDENT_START_EPOCH = 20
 BATCH_SIZE = 16
 
 USE_TEST_SET = False
@@ -824,7 +825,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     while True:
         epoch += 1
 
-        def work(data_p, data_d, labels, is_train, disc_loss, contrastive_loss_t, gen_loss, contrastive_loss_s, imitation_loss):
+        def work(data_p, data_d, labels, is_train, disc_loss, contrastive_loss_t, gen_loss, contrastive_loss_s, imitation_loss, train_student=True):
             if is_train:
                 net_d_t.train()
                 net_d_s.train()
@@ -838,8 +839,9 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data_p = pitch_shift_tensor(data_p, torch.randn(1, device=data_p.device) * 0.5)
 
             fakes = postprocess(net_g_t(preprocess_t(data_p.unsqueeze(1), data_d.unsqueeze(1), noise_p=preprocess_noise_amp_p, noise_d=preprocess_noise_amp_d))).squeeze(1)
-            fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1)
-            fakes_s = fakes_s[labels < eps]
+            if train_student:
+                fakes_s = postprocess(net_g_s(preprocess_s(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1)
+                fakes_s = fakes_s[labels < eps]
             d_data_inputs = data_p
             d_data_p = fakes.detach().clone()
             d_data_d = data_d
@@ -861,17 +863,18 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 loss.backward()
                 optimizer_d_t.step()
 
-                d_s_data_in = torch.cat((data_p, data_p[labels < eps]), dim=0)
-                d_s_data_d = torch.cat((data_d, data_d[labels < eps]), dim=0)
-                d_s_data_out = torch.cat((fakes.detach(), fakes_s.detach()), dim=0)
-                d_s_labels = torch.cat((torch.ones((data_p.shape[0],), device=device), torch.zeros((fakes_s.shape[0],), device=device)), dim=0)
+                if train_student:
+                    d_s_data_in = torch.cat((data_p, data_p[labels < eps]), dim=0)
+                    d_s_data_d = torch.cat((data_d, data_d[labels < eps]), dim=0)
+                    d_s_data_out = torch.cat((fakes.detach(), fakes_s.detach()), dim=0)
+                    d_s_labels = torch.cat((torch.ones((data_p.shape[0],), device=device), torch.zeros((fakes_s.shape[0],), device=device)), dim=0)
 
-                outputs = net_d_s(preprocess_disc_s(d_s_data_in.unsqueeze(1), d_s_data_d.unsqueeze(1), d_s_data_out.unsqueeze(1)))
-                loss = F.binary_cross_entropy(outputs, d_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+                    outputs = net_d_s(preprocess_disc_s(d_s_data_in.unsqueeze(1), d_s_data_d.unsqueeze(1), d_s_data_out.unsqueeze(1)))
+                    loss = F.binary_cross_entropy(outputs, d_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
 
-                optimizer_d_s.zero_grad()
-                loss.backward()
-                optimizer_d_s.step()
+                    optimizer_d_s.zero_grad()
+                    loss.backward()
+                    optimizer_d_s.step()
 
             net_d_t.eval()
             net_d_s.eval()
@@ -894,7 +897,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 loss_total.backward()
                 optimizer_g_t.step()
 
-            if len(fakes_s) > 0:
+            if train_student and len(fakes_s) > 0:
                 g_s_data_p = fakes_s
                 g_s_labels = torch.zeros((g_s_data_p.shape[0],), device=device)
                 outputs = net_d_s(preprocess_disc_s(data_p[labels < eps].unsqueeze(1), data_d[labels < eps].unsqueeze(1), g_s_data_p.unsqueeze(1)))
@@ -913,6 +916,10 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                     loss_total.backward()
                     optimizer_g_s.step()
 
+            if not train_student:
+                contrastive_loss_s.append(0)
+                imitation_loss.append(0)
+
 
         train_disc_loss = []
         train_contrastive_loss_t = []
@@ -922,7 +929,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         for batch_idx, (data_p, data_d, labels) in enumerate(train_loader):
             if batch_idx % 10 == 0:
                 print(f"train {batch_idx}/{len(train_loader)}")
-            work(data_p, data_d, labels, True, train_disc_loss, train_contrastive_loss_t, train_gen_loss, train_contrastive_loss_s, train_imitation_loss)
+            work(data_p, data_d, labels, True, train_disc_loss, train_contrastive_loss_t, train_gen_loss, train_contrastive_loss_s, train_imitation_loss, train_student=epoch >= STUDENT_START_EPOCH)
             
         train_disc_loss = np.mean(train_disc_loss)
         train_contrastive_loss_t = np.mean(train_contrastive_loss_t)
@@ -940,7 +947,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             for batch_idx, (data_p, data_d, labels) in enumerate(test_loader):
                 if batch_idx % 10 == 0:
                     print(f"val {batch_idx}/{len(test_loader)}")
-                work(data_p, data_d, labels, False, test_disc_loss, test_contrastive_loss_t, test_gen_loss, test_contrastive_loss_s, test_imitation_loss)
+                work(data_p, data_d, labels, False, test_disc_loss, test_contrastive_loss_t, test_gen_loss, test_contrastive_loss_s, test_imitation_loss, train_student=epoch >= STUDENT_START_EPOCH)
                 
             test_disc_loss = np.mean(test_disc_loss)
             test_contrastive_loss_t = np.mean(test_contrastive_loss_t)
