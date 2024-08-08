@@ -53,7 +53,7 @@ USE_TEST_SET = False
 EPOCH_PER_BAK = 5
 
 lr_g = 1e-5
-lr_d = 1e-6
+lr_d = 1e-5
 c_loss_factor_t = 1
 c_loss_factor_s = 0.5
 c_loss_goal_t = 10

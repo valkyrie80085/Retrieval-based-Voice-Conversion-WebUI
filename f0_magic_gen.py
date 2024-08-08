@@ -3,13 +3,14 @@ import torch.nn as nn
 from torch.nn import functional as F
 import torch.optim as optim
 
-bn_momentum = 1e-3
+rescale = 0.1
 
 segment_size = 2187
 channels = [64, 128, 256, 512, 512, 1024, 1024]
 kernel_size_conv = [5, 5, 5, 5, 5, 5]
 kernel_size_pool = [3, 3, 3, 3, 3, 3]
 bridge_width = 3
+
 class PitchContourGenerator(nn.Module):
     def __init__(self):
         super(PitchContourGenerator, self).__init__()
@@ -23,82 +24,53 @@ class PitchContourGenerator(nn.Module):
         self.upsamples = nn.ModuleList([])
 
         for i in range(len(kernel_size_conv)):
-            self.down_idmappings.append(
-                    nn.Sequential(
-                        nn.Conv1d(in_channels=2 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=1, padding="same", bias=False),
-                        nn.BatchNorm1d(channels[i], momentum=bn_momentum),
-                        )
-                    )
+            self.down_idmappings.append(nn.Conv1d(in_channels=2 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=1, padding="same"))
             if i == 0:
                 self.down_blocks.append(
                         nn.Sequential(
-                            nn.Conv1d(in_channels=2, out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same", bias=False),
-                            nn.BatchNorm1d(channels[i], momentum=bn_momentum),
+                            nn.Conv1d(in_channels=2, out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                             nn.LeakyReLU(),
-                            nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same", bias=False),
+                            nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                             )
                         )
             else:
                 self.down_blocks.append(
                         nn.Sequential(
-                            nn.BatchNorm1d(channels[i - 1], momentum=bn_momentum),
                             nn.LeakyReLU(),
-                            nn.Conv1d(in_channels=channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same", bias=False),
-                            nn.BatchNorm1d(channels[i], momentum=bn_momentum),
+                            nn.Conv1d(in_channels=channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                             nn.LeakyReLU(),
-                            nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same", bias=False),
+                            nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                             )
                         )
 
-            self.down_idmappings.append(
-                    nn.Sequential(
-                        nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=1, padding="same", bias=False),
-                        nn.BatchNorm1d(channels[i], momentum=bn_momentum),
-                        )
-                    )
+            self.down_idmappings.append(nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=1, padding="same"))
             self.down_blocks.append(
                     nn.Sequential(
-                        nn.BatchNorm1d(channels[i], momentum=bn_momentum),
                         nn.LeakyReLU(),
-                        nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same", bias=False),
-                        nn.BatchNorm1d(channels[i], momentum=bn_momentum),
+                        nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                         nn.LeakyReLU(),
-                        nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same", bias=False),
+                        nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                         )
                     )
 
 
-            self.up_idmappings.append(
-                    nn.Sequential(
-                        nn.Conv1d(in_channels=channels[i], out_channels=1 if i == 0 else channels[i - 1], kernel_size=1, padding="same", bias=False),
-                        nn.BatchNorm1d(1 if i == 0 else channels[i - 1], momentum=bn_momentum),
-                        )
-                    )
+            self.up_idmappings.append(nn.Conv1d(in_channels=channels[i], out_channels=1 if i == 0 else channels[i - 1], kernel_size=1, padding="same"))
             self.up_blocks.append(
                     nn.Sequential(
-                        nn.BatchNorm1d(channels[i], momentum=bn_momentum),
                         nn.LeakyReLU(),
-                        nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same", bias=False),
-                        nn.BatchNorm1d(channels[i], momentum=bn_momentum),
+                        nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                         nn.LeakyReLU(),
-                        nn.Conv1d(in_channels=channels[i], out_channels=1 if i == 0 else channels[i - 1], kernel_size=kernel_size_conv[i], padding="same", bias=False),
+                        nn.Conv1d(in_channels=channels[i], out_channels=1 if i == 0 else channels[i - 1], kernel_size=kernel_size_conv[i], padding="same"),
                         )
                     )
 
-            self.up_idmappings.append(
-                    nn.Sequential(
-                        nn.Conv1d(in_channels=2 * channels[i], out_channels=channels[i], kernel_size=1, padding="same", bias=False),
-                        nn.BatchNorm1d(channels[i], momentum=bn_momentum),
-                        )
-                    )
+            self.up_idmappings.append(nn.Conv1d(in_channels=2 * channels[i], out_channels=channels[i], kernel_size=1, padding="same"))
             self.up_blocks.append(
                     nn.Sequential(
-                        nn.BatchNorm1d(2 * channels[i], momentum=bn_momentum),
                         nn.LeakyReLU(),
-                        nn.Conv1d(in_channels=2 * channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same", bias=False),
-                        nn.BatchNorm1d(channels[i], momentum=bn_momentum),
+                        nn.Conv1d(in_channels=2 * channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                         nn.LeakyReLU(),
-                        nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same", bias=False),
+                        nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                         )
                     )
 
@@ -107,39 +79,30 @@ class PitchContourGenerator(nn.Module):
             self.upsamples.append(nn.Upsample(scale_factor=kernel_size_pool[i]))
 
 
-        self.bridge_idmappings1 = nn.Sequential(
-                nn.Conv1d(channels[-2], channels[-1], 1, padding="same", bias=False),
-                nn.BatchNorm1d(channels[-1], momentum=bn_momentum),
-                )
+        self.bridge_idmappings1 = nn.Conv1d(channels[-2], channels[-1], 1, padding="same")
 
         self.bridge1 = nn.Sequential(
-                nn.BatchNorm1d(channels[-2], momentum=bn_momentum),
                 nn.LeakyReLU(),
-                nn.Conv1d(channels[-2], channels[-1], bridge_width, padding="same", bias=False),
-                nn.BatchNorm1d(channels[-1], momentum=bn_momentum),
+                nn.Conv1d(channels[-2], channels[-1], bridge_width, padding="same"),
                 nn.LeakyReLU(),
-                nn.Conv1d(channels[-1], channels[-1], bridge_width, padding="same", bias=False),
+                nn.Conv1d(channels[-1], channels[-1], bridge_width, padding="same"),
                 ) 
 
 
-        self.bridge_idmappings2 = nn.Sequential(
-                nn.Conv1d(channels[-1], channels[-2], 1, padding="same", bias=False),
-                nn.BatchNorm1d(channels[-2], momentum=bn_momentum),
-                )
+        self.bridge_idmappings2 = nn.Conv1d(channels[-1], channels[-2], 1, padding="same")
         self.bridge2 = nn.Sequential(
-                nn.BatchNorm1d(channels[-1], momentum=bn_momentum),
                 nn.LeakyReLU(),
-                nn.Conv1d(channels[-1], channels[-1], bridge_width, padding="same", bias=False),
-                nn.BatchNorm1d(channels[-1], momentum=bn_momentum),
+                nn.Conv1d(channels[-1], channels[-1], bridge_width, padding="same"),
                 nn.LeakyReLU(),
-                nn.Conv1d(channels[-1], channels[-2], bridge_width, padding="same", bias=False),
+                nn.Conv1d(channels[-1], channels[-2], bridge_width, padding="same"),
                 ) 
 
-        self.adjust = nn.Conv1d(in_channels=1, out_channels=1, kernel_size=1, padding="same")
+        with torch.no_grad():
+            for block in self.down_blocks + self.up_blocks + [self.bridge1, self.bridge2]:
+                block[-1].weight *= rescale
 
 
     def forward(self, x):
-        _x = x[:, :1]
         skips = []
         for i in range(len(kernel_size_conv)):
             s = self.down_idmappings[i * 2](x)
@@ -167,7 +130,4 @@ class PitchContourGenerator(nn.Module):
             s = self.up_idmappings[i * 2](x)
             x = self.up_blocks[i * 2](x) + s
 
-        x = self.adjust(x)
-
-        return x + _x
-
+        return x

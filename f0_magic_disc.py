@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import torch.optim as optim
 
-bn_momentum = 1e-2
+rescale = 0.1
 
 periods = [1, 2, 3, 5, 7, 11]
 segment_size = [1939, 1934, 1929, 1865, 1855, 2024]
@@ -21,38 +21,28 @@ class PitchContourDiscriminatorP(nn.Module):
         self.blocks = nn.ModuleList([])
         self.pools = nn.ModuleList([])
         for i in range(depth[self.p]):
-            self.idmappings.append(
-                    nn.Sequential(
-                        nn.Conv1d(in_channels=c if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=1, padding="same", bias=False),
-                        nn.BatchNorm1d(channels[i], momentum=bn_momentum),
-                        )
-                    )
+            self.idmappings.append(nn.Conv1d(in_channels=c if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=1, padding="same"))
             if i == 0:
                 self.blocks.append(
                         nn.Sequential(
-                            nn.Conv1d(in_channels=c, out_channels=channels[i], kernel_size=kernel_size_conv[i], bias=False),
-                            nn.BatchNorm1d(channels[i], momentum=bn_momentum),
+                            nn.Conv1d(in_channels=c, out_channels=channels[i], kernel_size=kernel_size_conv[i]),
                             nn.LeakyReLU(),
-                            nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], bias=False),
+                            nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
                             )
                         )
             else:
                 self.blocks.append(
                         nn.Sequential(
-                            nn.BatchNorm1d(channels[i - 1], momentum=bn_momentum),
                             nn.LeakyReLU(),
-                            nn.Conv1d(in_channels=channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i], bias=False),
-                            nn.BatchNorm1d(channels[i], momentum=bn_momentum),
+                            nn.Conv1d(in_channels=channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
                             nn.LeakyReLU(),
-                            nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], bias=False),
+                            nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
                             )
                         )
             self.pools.append(nn.MaxPool1d(kernel_size=kernel_size_pool[i]))
         self.fc1 = nn.Sequential(
-                nn.BatchNorm1d(channels[depth[self.p] - 1] * fc_width[self.p], momentum=bn_momentum),
                 nn.LeakyReLU(),
-                nn.Linear(channels[depth[self.p] - 1] * fc_width[self.p], channels[depth[self.p] - 1] // 2, bias=False),
-                nn.BatchNorm1d(channels[depth[self.p] - 1] // 2, momentum=bn_momentum),
+                nn.Linear(channels[depth[self.p] - 1] * fc_width[self.p], channels[depth[self.p] - 1] // 2),
                 nn.LeakyReLU(),
                 )
         self.fc2 = nn.Sequential(
@@ -63,6 +53,10 @@ class PitchContourDiscriminatorP(nn.Module):
                 nn.Linear(channels[depth[self.p] - 1] // 2, 1),
                 nn.Sigmoid(),
                 )
+
+        with torch.no_grad():
+            for block in self.blocks:
+                block[-1].weight *= rescale
 
 
     def forward(self, x):
