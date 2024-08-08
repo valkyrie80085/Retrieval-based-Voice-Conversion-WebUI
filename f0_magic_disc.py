@@ -26,28 +26,28 @@ class PitchContourDiscriminatorP(nn.Module):
                 self.blocks.append(
                         nn.Sequential(
                             nn.Conv1d(in_channels=c, out_channels=channels[i], kernel_size=kernel_size_conv[i]),
-                            nn.LeakyReLU(),
+                            nn.GELU(),
                             nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
                             )
                         )
             else:
                 self.blocks.append(
                         nn.Sequential(
-                            nn.LeakyReLU(),
+                            nn.GELU(),
                             nn.Conv1d(in_channels=channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
-                            nn.LeakyReLU(),
+                            nn.GELU(),
                             nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
                             )
                         )
             self.pools.append(nn.MaxPool1d(kernel_size=kernel_size_pool[i]))
         self.fc1 = nn.Sequential(
-                nn.LeakyReLU(),
+                nn.GELU(),
                 nn.Linear(channels[depth[self.p] - 1] * fc_width[self.p], channels[depth[self.p] - 1] // 2),
-                nn.LeakyReLU(),
+                nn.GELU(),
                 )
         self.fc2 = nn.Sequential(
                 nn.Linear(channels[depth[self.p] - 1] // 2, channels[depth[self.p] - 1] // 2),
-                nn.LeakyReLU(),
+                nn.GELU(),
                 )
         self.fc3 = nn.Sequential(
                 nn.Linear(channels[depth[self.p] - 1] // 2, 1),

@@ -29,16 +29,16 @@ class PitchContourGenerator(nn.Module):
                 self.down_blocks.append(
                         nn.Sequential(
                             nn.Conv1d(in_channels=2, out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
-                            nn.LeakyReLU(),
+                            nn.GELU(),
                             nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                             )
                         )
             else:
                 self.down_blocks.append(
                         nn.Sequential(
-                            nn.LeakyReLU(),
+                            nn.GELU(),
                             nn.Conv1d(in_channels=channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
-                            nn.LeakyReLU(),
+                            nn.GELU(),
                             nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                             )
                         )
@@ -46,9 +46,9 @@ class PitchContourGenerator(nn.Module):
             self.down_idmappings.append(nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=1, padding="same"))
             self.down_blocks.append(
                     nn.Sequential(
-                        nn.LeakyReLU(),
+                        nn.GELU(),
                         nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
-                        nn.LeakyReLU(),
+                        nn.GELU(),
                         nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                         )
                     )
@@ -57,9 +57,9 @@ class PitchContourGenerator(nn.Module):
             self.up_idmappings.append(nn.Conv1d(in_channels=channels[i], out_channels=1 if i == 0 else channels[i - 1], kernel_size=1, padding="same"))
             self.up_blocks.append(
                     nn.Sequential(
-                        nn.LeakyReLU(),
+                        nn.GELU(),
                         nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
-                        nn.LeakyReLU(),
+                        nn.GELU(),
                         nn.Conv1d(in_channels=channels[i], out_channels=1 if i == 0 else channels[i - 1], kernel_size=kernel_size_conv[i], padding="same"),
                         )
                     )
@@ -67,9 +67,9 @@ class PitchContourGenerator(nn.Module):
             self.up_idmappings.append(nn.Conv1d(in_channels=2 * channels[i], out_channels=channels[i], kernel_size=1, padding="same"))
             self.up_blocks.append(
                     nn.Sequential(
-                        nn.LeakyReLU(),
+                        nn.GELU(),
                         nn.Conv1d(in_channels=2 * channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
-                        nn.LeakyReLU(),
+                        nn.GELU(),
                         nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                         )
                     )
@@ -82,18 +82,18 @@ class PitchContourGenerator(nn.Module):
         self.bridge_idmappings1 = nn.Conv1d(channels[-2], channels[-1], 1, padding="same")
 
         self.bridge1 = nn.Sequential(
-                nn.LeakyReLU(),
+                nn.GELU(),
                 nn.Conv1d(channels[-2], channels[-1], bridge_width, padding="same"),
-                nn.LeakyReLU(),
+                nn.GELU(),
                 nn.Conv1d(channels[-1], channels[-1], bridge_width, padding="same"),
                 ) 
 
 
         self.bridge_idmappings2 = nn.Conv1d(channels[-1], channels[-2], 1, padding="same")
         self.bridge2 = nn.Sequential(
-                nn.LeakyReLU(),
+                nn.GELU(),
                 nn.Conv1d(channels[-1], channels[-1], bridge_width, padding="same"),
-                nn.LeakyReLU(),
+                nn.GELU(),
                 nn.Conv1d(channels[-1], channels[-2], bridge_width, padding="same"),
                 ) 
 
