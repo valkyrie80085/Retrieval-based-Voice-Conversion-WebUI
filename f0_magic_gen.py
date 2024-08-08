@@ -139,6 +139,7 @@ class PitchContourGenerator(nn.Module):
 
 
     def forward(self, x):
+        _x = x[:, :1]
         skips = []
         for i in range(len(kernel_size_conv)):
             s = self.down_idmappings[i * 2](x)
@@ -168,5 +169,5 @@ class PitchContourGenerator(nn.Module):
 
         x = self.adjust(x)
 
-        return x
+        return x + _x
 

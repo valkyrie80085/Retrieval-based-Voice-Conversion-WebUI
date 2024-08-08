@@ -52,8 +52,8 @@ BATCH_SIZE = 16
 USE_TEST_SET = False
 EPOCH_PER_BAK = 5
 
-lr_g = 1e-4
-lr_d = 1e-4
+lr_g = 1e-5
+lr_d = 1e-6
 c_loss_factor_t = 1
 c_loss_factor_s = 0.5
 c_loss_goal_t = 10
@@ -829,9 +829,13 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             if is_train:
                 net_d_t.train()
                 net_d_s.train()
+                net_g_t.train()
+                net_g_s.train()
             else:
                 net_d_t.eval()
                 net_d_s.eval()
+                net_g_t.eval()
+                net_g_s.eval()
             data_p, data_d, labels = data_p.to(device), data_d.to(device), labels.to(device)
             offset = torch.randint(0, max_offset, (1,))
             data_p = data_p[:, offset:data_p.shape[1] - max_offset + offset]
@@ -888,7 +892,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             loss_total = 0
             loss = -F.binary_cross_entropy(outputs, g_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
-            loss_total = loss
+            loss_total += loss
             gen_loss.append(loss.item())
 
             loss = get_contrastive_loss_t(fakes, data_p)
@@ -907,7 +911,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
                 loss_total = 0
                 loss = F.binary_cross_entropy(outputs, 1 - g_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
-                loss_total = loss
+                loss_total += loss
                 imitation_loss.append(loss.item())
 
                 loss = get_contrastive_loss_s(fakes_s, data_p[labels < eps])
