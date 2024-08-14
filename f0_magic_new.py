@@ -712,7 +712,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     except:
         epoch = 0
         net_g = PitchContourGenerator().to(device)
-        net_d = PitchContourDiscriminator(3).to(device)
+        net_d = PitchContourDiscriminator(2).to(device)
         optimizer_g = optim.AdamW(net_g.parameters(), lr=lr_g)
         optimizer_d = optim.AdamW(net_d.parameters(), lr=lr_d)
         print("Model initialized with random weights")
@@ -778,8 +778,9 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             net_d.eval()
             if torch.sum(labels < eps) > 0:
                 g_s_data_p = fakes.clone()
+                g_s_data_d = data_d[labels < eps].clone()
                 g_s_labels = torch.zeros((g_s_data_p.shape[0],), device=device)
-                outputs = net_d(preprocess(g_s_data_p.unsqueeze(1), data_d[labels < eps].unsqueeze(1)))
+                outputs = net_d(preprocess(g_s_data_p.unsqueeze(1), g_s_data_d.unsqueeze(1)))
 
                 loss_total = 0
                 loss = F.binary_cross_entropy(outputs, 1 - g_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
