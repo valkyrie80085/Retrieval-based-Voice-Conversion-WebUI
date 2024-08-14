@@ -61,7 +61,7 @@ c_loss_goal = 0
 def f0_magic_log(s):
     while True:
         try:
-            with open("f0_magic.log", "a") as f:
+            with open("f0_magic_new.log", "a") as f:
                 print(s, file=f)
             break
         except:
@@ -596,45 +596,38 @@ def load_data():
     if multiplicity_others > 0:
         for filename in walk(OTHERS_PATH):
             if filename.endswith(".wav"):
-                for load_ref in (False, True):
-                    if filename in test_set:
-                        target_data, others_data = test_target_data, test_others_data
-                    else:
-                        target_data, others_data = train_target_data, train_others_data
-                    if load_ref:
-                        filename_p = os.path.splitext(filename)[0] + " ref.npy"
-                    else:
-                        filename_p = os.path.splitext(filename)[0] + " p.npy"
-                    filename_d = os.path.splitext(filename)[0] + " d.npy"
-                    contour_ = np.load(filename_p)
-                    phone_diff_ = resize(np.load(filename_d), len(contour_))
-                    for repetition in range(multiplicity_others):
-                        contour, phone_diff = retime_gaps(contour_, phone_diff_)
-                        if contour.shape[0] < segment_size:
-                            phone_diff = np.pad(phone_diff, (0, segment_size - contour.shape[0]))
-                            contour = np.pad(contour, (0, segment_size - contour.shape[0]))
-                        contour = np.pad(contour, (padding_size + max_offset, padding_size))
-                        phone_diff = np.pad(phone_diff, (padding_size + max_offset, padding_size))
-                        for i in range(round((contour.shape[0] - max_offset - 2 * padding_size) / segment_size)):
-                            start = random.randint(padding_size + max_offset, contour.shape[0] - padding_size - segment_size)
-                            use_original = False#random.randint(0, 4) == 0
-                            contour_sliced = contour[start - padding_size - max_offset:start + padding_size + segment_size].copy()
-                            phone_diff_sliced = phone_diff[start - padding_size - max_offset:start + padding_size + segment_size].copy()
-                            if np.sum(contour_sliced[padding_size:-padding_size] > eps) > segment_size * min_ratio:
-                                if use_original:
-                                    shift_real = 0
-                                else:
-                                    average = get_average(contour_sliced[contour_sliced > eps]) / 1127
-                                    average_goal = random.choice(target_averages)
-                                    average = (math.exp(average) - 1) * 700
-                                    average_goal = (math.exp(average_goal) - 1) * 700
-                                    shift_real = math.log(average_goal / average) / math.log(2) * 12
-                                contour_final = pitch_shift_mel(contour_sliced, shift_real)
-                                phone_diff_final = phone_diff_sliced
-                                if load_ref:
-                                    target_data.append((torch.tensor(contour_final, dtype=torch.float32), torch.tensor(phone_diff_final, dtype=torch.float32)))
-                                else:
-                                    others_data.append((torch.tensor(contour_final, dtype=torch.float32), torch.tensor(phone_diff_final, dtype=torch.float32)))
+                if filename in test_set:
+                    target_data, others_data = test_target_data, test_others_data
+                else:
+                    target_data, others_data = train_target_data, train_others_data
+                filename_p = os.path.splitext(filename)[0] + " p.npy"
+                filename_d = os.path.splitext(filename)[0] + " d.npy"
+                contour_ = np.load(filename_p)
+                phone_diff_ = resize(np.load(filename_d), len(contour_))
+                for repetition in range(multiplicity_others):
+                    contour, phone_diff = retime_gaps(contour_, phone_diff_)
+                    if contour.shape[0] < segment_size:
+                        phone_diff = np.pad(phone_diff, (0, segment_size - contour.shape[0]))
+                        contour = np.pad(contour, (0, segment_size - contour.shape[0]))
+                    contour = np.pad(contour, (padding_size + max_offset, padding_size))
+                    phone_diff = np.pad(phone_diff, (padding_size + max_offset, padding_size))
+                    for i in range(round((contour.shape[0] - max_offset - 2 * padding_size) / segment_size)):
+                        start = random.randint(padding_size + max_offset, contour.shape[0] - padding_size - segment_size)
+                        use_original = False#random.randint(0, 4) == 0
+                        contour_sliced = contour[start - padding_size - max_offset:start + padding_size + segment_size].copy()
+                        phone_diff_sliced = phone_diff[start - padding_size - max_offset:start + padding_size + segment_size].copy()
+                        if np.sum(contour_sliced[padding_size:-padding_size] > eps) > segment_size * min_ratio:
+                            if use_original:
+                                shift_real = 0
+                            else:
+                                average = get_average(contour_sliced[contour_sliced > eps]) / 1127
+                                average_goal = random.choice(target_averages)
+                                average = (math.exp(average) - 1) * 700
+                                average_goal = (math.exp(average_goal) - 1) * 700
+                                shift_real = math.log(average_goal / average) / math.log(2) * 12
+                            contour_final = pitch_shift_mel(contour_sliced, shift_real)
+                            phone_diff_final = phone_diff_sliced
+                            others_data.append((torch.tensor(contour_final, dtype=torch.float32), torch.tensor(phone_diff_final, dtype=torch.float32)))
                         
 
     print("Train target data count:", len(train_target_data))
@@ -671,6 +664,10 @@ def get_contrastive_loss(output, ref):
 
 
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
+    from f0_magic_gen_legacy import PitchContourGenerator as PitchContourGeneratorLegacy
+    model_legacy = PitchContourGeneratorLegacy().to("cuda")
+    model_legacy.eval()
+    model_legacy.load_state_dict(torch.load("model_.pt")) 
     if train_target_data:
         train_target_data_p = torch.stack(tuple(pitch for pitch, phone_diff in train_target_data))
         train_target_data_d = torch.stack(tuple(phone_diff for pitch, phone_diff in train_target_data))
@@ -760,11 +757,15 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data_p = pitch_shift_tensor(data_p, torch.randn(1, device=data_p.device) * 0.5)
 
             d_data_p = data_p.clone()
+            d_data_d = data_d.clone()
+            d_labels = labels.clone()
             if torch.sum(labels < eps) > 0:
                 fakes = postprocess(net_g(preprocess(data_p[labels < eps].unsqueeze(1), data_d[labels < eps].unsqueeze(1)))).squeeze(1)
                 d_data_p[labels < eps] = fakes.detach().clone()
-            d_data_d = data_d.clone()
-            d_labels = labels.clone()
+                fakes_legacy = postprocess(model_legacy(preprocess(data_p[labels < eps].unsqueeze(1), data_d[labels < eps].unsqueeze(1)))).squeeze(1).detach()
+                d_data_p = torch.cat((d_data_p, fakes_legacy), dim=0)
+                d_data_d = torch.cat((d_data_d, data_d[labels < eps]), dim=0)
+                d_labels = torch.cat((d_labels, torch.ones((fakes_legacy.shape[0],), device=device)), dim=0)
 
             outputs = net_d(preprocess(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1)))
             loss = F.binary_cross_entropy(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))#, weight=((d_labels > eps) * (data_ratio - 1) + 1).unsqueeze(1).expand(-1, outputs.shape[1]))
