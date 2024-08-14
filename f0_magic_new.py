@@ -196,6 +196,16 @@ def preprocess(x, y):
     return torch.cat((x_ret, y_ret), dim=1)
 
 
+def preprocess_d(x, y):
+    x_ret = (x - mn_p) / std_p
+    y_ret = y.clone()
+    y_ret[x < eps] = 0
+    y_ret = torch.clamp(y_ret, min=d_clip_threshold)
+    y_ret = y_ret + torch.randn_like(y_ret) * preprocess_noise_amp_d
+    y_ret = (y_ret - mn_d) / std_d
+    return torch.cat((x_ret, y_ret), dim=1)
+
+
 def postprocess(x):
     x_ret = x.clone()
     x_ret = x * std_p + mn_p
@@ -767,7 +777,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 d_data_d = torch.cat((d_data_d, data_d[labels < eps]), dim=0)
                 d_labels = torch.cat((d_labels, torch.ones((fakes_legacy.shape[0],), device=device)), dim=0)
 
-            outputs = net_d(preprocess(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1)))
+            outputs = net_d(preprocess_d(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1)))
             loss = F.binary_cross_entropy(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))#, weight=((d_labels > eps) * (data_ratio - 1) + 1).unsqueeze(1).expand(-1, outputs.shape[1]))
             disc_loss.append(loss.item())
 
@@ -781,7 +791,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 g_s_data_p = fakes.clone()
                 g_s_data_d = data_d[labels < eps].clone()
                 g_s_labels = torch.zeros((g_s_data_p.shape[0],), device=device)
-                outputs = net_d(preprocess(g_s_data_p.unsqueeze(1), g_s_data_d.unsqueeze(1)))
+                outputs = net_d(preprocess_d(g_s_data_p.unsqueeze(1), g_s_data_d.unsqueeze(1)))
 
                 loss_total = 0
                 loss = F.binary_cross_entropy(outputs, 1 - g_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
