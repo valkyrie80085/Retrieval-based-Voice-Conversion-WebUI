@@ -252,15 +252,14 @@ def preprocess_disc_t(a, x, y, noise_p=None, noise_d=None):
 
 
 def preprocess_disc_s(x, y, z):
-#    x_blurred = zero_sensative_blur(x)
-#    x_sharpened = x - x_blurred
-#    x_sharpened = x_sharpened / std_s
+    x_blurred = zero_sensative_blur(x)
+    x_sharpened = x - x_blurred
+    x_sharpened = x_sharpened / std_s
 
     y_ret = (y - mn_d) / std_d
     z_ret = (z - mn_p) / std_p
 
-#    return torch.cat((x_sharpened, y, z), dim=1)
-    return torch.cat((y, z), dim=1)
+    return torch.cat((x_sharpened, y, z), dim=1)
 
 
 def postprocess(x):
@@ -753,7 +752,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     net_g_t = PitchContourGenerator().to(device)
     net_d_t = PitchContourDiscriminator(3).to(device)
     net_g_s = PitchContourGenerator().to(device)
-    net_d_s = PitchContourDiscriminator(2).to(device)
+    net_d_s = PitchContourDiscriminator(3).to(device)
     optimizer_g_t = optim.AdamW(net_g_t.parameters(), lr=lr_g)
     optimizer_d_t = optim.AdamW(net_d_t.parameters(), lr=lr_d)
     optimizer_g_s = optim.AdamW(net_g_s.parameters(), lr=lr_g)
