@@ -788,7 +788,6 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         net_g_t = PitchContourGenerator().to(device)
         net_d_t = PitchContourDiscriminator(3).to(device)
         net_g_s = PitchContourGenerator().to(device)
-        net_d_s = PitchContourDiscriminator(2).to(device)
         optimizer_g_t = optim.AdamW(net_g_t.parameters(), lr=lr_g)
         optimizer_d_t = optim.AdamW(net_d_t.parameters(), lr=lr_d)
         optimizer_g_s = optim.AdamW(net_g_s.parameters(), lr=lr_g)
