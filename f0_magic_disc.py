@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import torch.optim as optim
 
-rescale = 0.1
+rescale = 1.0
 
 periods = [1, 2, 3, 5, 7, 11]
 segment_size = [1939, 1934, 1929, 1865, 1855, 2024]
