@@ -759,12 +759,12 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
             data_p = pitch_shift_tensor(data_p, torch.randn(1, device=data_p.device) * 0.5)
 
-            d_data_p = data_p
+            d_data_p = data_p.clone()
             if torch.sum(labels < eps) > 0:
                 fakes = postprocess(net_g(preprocess(data_p[labels < eps].unsqueeze(1), data_d[labels < eps].unsqueeze(1)))).squeeze(1)
                 d_data_p[labels < eps] = fakes.detach().clone()
-            d_data_d = data_d
-            d_labels = labels
+            d_data_d = data_d.clone()
+            d_labels = labels.clone()
 
             outputs = net_d(preprocess(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1)))
             loss = F.binary_cross_entropy(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))#, weight=((d_labels > eps) * (data_ratio - 1) + 1).unsqueeze(1).expand(-1, outputs.shape[1]))
@@ -777,7 +777,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             net_d.eval()
             if torch.sum(labels < eps) > 0:
-                g_s_data_p = fakes
+                g_s_data_p = fakes.clone()
                 g_s_labels = torch.zeros((g_s_data_p.shape[0],), device=device)
                 outputs = net_d(preprocess(g_s_data_p.unsqueeze(1), data_d[labels < eps].unsqueeze(1)))
 
