@@ -17,31 +17,19 @@ class PitchContourDiscriminatorP(nn.Module):
         super(PitchContourDiscriminatorP, self).__init__()
         self.p = p
         self.t = t
-        self.idmappings = nn.ModuleList([])
         self.blocks = nn.ModuleList([])
         self.pools = nn.ModuleList([])
         for i in range(depth[self.p]):
-            self.idmappings.append(nn.Conv1d(in_channels=c if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=1, padding="same"))
-            if i == 0:
-                self.blocks.append(
-                        nn.Sequential(
-                            nn.Conv1d(in_channels=c, out_channels=channels[i], kernel_size=kernel_size_conv[i]),
-                            nn.GELU(),
-                            nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
-                            )
+            self.blocks.append(
+                    nn.Sequential(
+                        nn.Conv1d(in_channels=c if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
+                        nn.GELU(),
+                        nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
+                        nn.GELU(),
                         )
-            else:
-                self.blocks.append(
-                        nn.Sequential(
-                            nn.GELU(),
-                            nn.Conv1d(in_channels=channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
-                            nn.GELU(),
-                            nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
-                            )
-                        )
+                    )
             self.pools.append(nn.MaxPool1d(kernel_size=kernel_size_pool[i]))
         self.fc1 = nn.Sequential(
-                nn.GELU(),
                 nn.Linear(channels[depth[self.p] - 1] * fc_width[self.p], channels[depth[self.p] - 1] // 2),
                 nn.GELU(),
                 )
@@ -56,7 +44,7 @@ class PitchContourDiscriminatorP(nn.Module):
 
         with torch.no_grad():
             for block in self.blocks:
-                block[-1].weight *= rescale
+                block[-2].weight *= rescale
 
 
     def forward(self, x):
@@ -67,10 +55,7 @@ class PitchContourDiscriminatorP(nn.Module):
         x = torch.transpose(x, 1, 2)
         x = x.reshape(x.shape[0] * periods[self.p], x.shape[2], -1)
         for i in range(depth[self.p]):
-            _x = self.blocks[i](x)
-            trim = (x.shape[2] - _x.shape[2]) // 2
-            s = self.idmappings[i](x[:, :, trim:x.shape[2] - trim])
-            x = _x + s
+            x = self.blocks[i](x)
             x = self.pools[i](x)
         x = x.view(x.shape[0], -1)
         x = self.fc1(x)

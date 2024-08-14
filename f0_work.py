@@ -4,7 +4,7 @@ import numpy as np
 
 from f0_magic import compute_f0_inference, compute_d, resize, pitch_invert_mel, pitch_shift_mel
 from f0_magic import postprocess, preprocess_s, preprocess_t, padding_size
-from f0_magic_gen import PitchContourGenerator, segment_size
+from f0_magic_gen_legacy import PitchContourGenerator, segment_size
 from f0_magic import snap
 
 import random
@@ -43,7 +43,7 @@ print(f"Model loaded from '{model_path:s}'")
 def walk(path):
    return sum(([os.path.join(dirpath, file_name) for file_name in filenames] for (dirpath, dirnames, filenames) in os.walk(path)), [])
 
-WORK_PATH = "C:/datasets/singing_ai/f0_magic/work" 
+WORK_PATH = "C:/datasets/singing_ai/f0_magic/" 
 for filename in walk(WORK_PATH):
     if os.path.splitext(filename)[1] == ".wav":
         print(filename)
@@ -51,7 +51,7 @@ for filename in walk(WORK_PATH):
         input_file_p = os.path.splitext(audio_file)[0] + " p.npy"
         input_file_d = os.path.splitext(feature_file)[0] + " d.npy"
 
-        output_file = os.path.splitext(audio_file)[0] + " p.npy"
+        output_file = os.path.splitext(audio_file)[0] + " ref.npy"
         input_contour_mel = np.load(input_file_p)
         input_phone_diff = resize(np.load(input_file_d), len(input_contour_mel))
         modified_contour_mel = np.pad(input_contour_mel, (padding_size, padding_size))
