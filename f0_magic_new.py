@@ -696,7 +696,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         test_others_data_d = torch.stack(tuple(phone_diff for pitch, phone_diff in test_others_data))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     net_g = PitchContourGenerator().to(device)
-    net_d = PitchContourDiscriminator(2).to(device)
+    net_d = PitchContourDiscriminator(3).to(device)
     optimizer_g = optim.AdamW(net_g.parameters(), lr=lr_g)
     optimizer_d = optim.AdamW(net_d.parameters(), lr=lr_d)
     epoch = 0
@@ -723,7 +723,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     except:
         epoch = 0
         net_g = PitchContourGenerator().to(device)
-        net_d = PitchContourDiscriminator(2).to(device)
+        net_d = PitchContourDiscriminator(3).to(device)
         optimizer_g = optim.AdamW(net_g.parameters(), lr=lr_g)
         optimizer_d = optim.AdamW(net_d.parameters(), lr=lr_d)
         print("Model initialized with random weights")
@@ -782,7 +782,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 d_data_inputs = torch.cat((d_data_inputs, data_p[labels < eps]), dim=0)
                 d_data_p = torch.cat((d_data_p, fakes_legacy[labels < eps]), dim=0)
                 d_data_d = torch.cat((d_data_d, data_d[labels < eps]), dim=0)
-                d_labels = torch.cat((d_labels, torch.ones((fakes_legacy.shape[0],), device=device)), dim=0)
+                d_labels = torch.cat((d_labels, torch.ones((fakes_legacy[labels < eps].shape[0],), device=device)), dim=0)
 
             outputs = net_d(preprocess_d(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), d_data_inputs.unsqueeze(1)))
             loss = F.binary_cross_entropy(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))#, weight=((d_labels > eps) * (data_ratio - 1) + 1).unsqueeze(1).expand(-1, outputs.shape[1]))
@@ -810,7 +810,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 loss_total += loss * c_loss_factor
                 contrastive_loss.append(loss.item())
 
-                contrastive_loss_ref.append(F.mse_loss(fakes, fakes_legacy).item())
+                contrastive_loss_ref.append(F.mse_loss(fakes, fakes_legacy[labels < eps]).item())
 
                 if is_train:
                     optimizer_g.zero_grad()
