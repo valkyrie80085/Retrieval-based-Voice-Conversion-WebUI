@@ -2,10 +2,10 @@ import torch
 
 import numpy as np
 
-from f0_magic import compute_f0_inference, compute_d, resize, pitch_invert_mel, pitch_shift_mel
-from f0_magic import postprocess, preprocess_s, preprocess_t, padding_size
+from f0_magic_new_diff import compute_f0_inference, compute_d, resize, pitch_invert_mel, pitch_shift_mel
+from f0_magic_new_diff import postprocess, preprocess, padding_size
 from f0_magic_gen import PitchContourGenerator, segment_size
-from f0_magic import snap
+from f0_magic_new_diff import snap
 
 import random
 import os
@@ -23,13 +23,6 @@ with open('f0_test_config.json', 'r') as openfile:
     index_file = data["index_file"]
     audio_file = data["audio_file"]
     pitch_shift = float(data["pitch_shift"])
-    try:
-        if data["model_type"].lower().startswith("t"):
-            preprocess = preprocess_t
-        else:
-            preprocess = preprocess_s
-    except:
-        preprocess = preprocess_s
     try:
         invert_axis = data["invert_axis"]
     except:

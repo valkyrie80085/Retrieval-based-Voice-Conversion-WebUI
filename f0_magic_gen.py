@@ -12,7 +12,7 @@ kernel_size_pool = [3, 3, 3, 3, 3, 3]
 bridge_width = 3
 
 class PitchContourGenerator(nn.Module):
-    def __init__(self):
+    def __init__(self, c=2):
         super(PitchContourGenerator, self).__init__()
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
@@ -24,11 +24,11 @@ class PitchContourGenerator(nn.Module):
         self.upsamples = nn.ModuleList([])
 
         for i in range(len(kernel_size_conv)):
-            self.down_idmappings.append(nn.Conv1d(in_channels=2 if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=1, padding="same"))
+            self.down_idmappings.append(nn.Conv1d(in_channels=c if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=1, padding="same"))
             if i == 0:
                 self.down_blocks.append(
                         nn.Sequential(
-                            nn.Conv1d(in_channels=2, out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
+                            nn.Conv1d(in_channels=c, out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                             nn.GELU(),
                             nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i], padding="same"),
                             )
