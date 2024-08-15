@@ -4,7 +4,7 @@ import numpy as np
 
 from f0_magic_new_diff import compute_f0_inference, compute_d, resize, pitch_invert_mel, pitch_shift_mel
 from f0_magic_new_diff import postprocess, preprocess, padding_size
-from f0_magic_gen import PitchContourGenerator, segment_size
+from f0_magic_gen_diff import PitchContourGenerator, segment_size
 from f0_magic_new_diff import snap
 
 import random

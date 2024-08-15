@@ -21,7 +21,7 @@ from scipy.interpolate import CubicSpline
 
 from configs.config import Config
 from infer.modules.vc.utils import load_hubert
-from f0_magic_gen import PitchContourGenerator, segment_size
+from f0_magic_gen_diff import PitchContourGenerator, segment_size
 
 padding_size = 2 * segment_size
 
@@ -806,7 +806,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             ref[labels > eps] = data_p[labels > eps]
             
             t = torch.randint(0, num_timesteps, (data_p.shape[0],), device=device) 
-            outputs = postprocess(net_g(preprocess(get_noise(ref, t).unsqueeze(1), data_d.unsqueeze(1), inputs.unsqueeze(1)))).squeeze(1)
+            outputs = postprocess(net_g(preprocess(get_noise(ref, t).unsqueeze(1), data_d.unsqueeze(1), inputs.unsqueeze(1)), t)).squeeze(1)
             loss = F.mse_loss(outputs, ref)
             loss = extract(loss_weight, t, loss.shape) * loss
             loss = loss.mean()
