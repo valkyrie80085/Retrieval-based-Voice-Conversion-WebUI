@@ -189,21 +189,25 @@ def zero_sensative_blur(x):
 
 mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
-std = 80
+std_s = 80
 def preprocess(x, y):
     x_ret = (x - mn_p) / std_p
     y_ret = (y - mn_d) / std_d
     return torch.cat((x_ret, y_ret), dim=1)
 
 
-def preprocess_d(x, y):
+def preprocess_d(x, y, z):
+    z_blurred = zero_sensative_blur(z)
+    z_sharpened = z - z_blurred
+    z_sharpened = z_sharpened / std_s
+
     x_ret = (x - mn_p) / std_p
     y_ret = y.clone()
     y_ret[x < eps] = 0
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
     y_ret = y_ret + torch.randn_like(y_ret) * preprocess_noise_amp_d
     y_ret = (y_ret - mn_d) / std_d
-    return torch.cat((x_ret, y_ret), dim=1)
+    return torch.cat((x_ret, y_ret, z_blurred), dim=1)
 
 
 def postprocess(x):
@@ -765,19 +769,22 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data_p = data_p[:, offset:data_p.shape[1] - max_offset + offset]
             data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
             data_p = pitch_shift_tensor(data_p, torch.randn(1, device=data_p.device) * 0.5)
+            fakes_legacy = postprocess(model_legacy(preprocess(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1).detach()
 
+            d_data_inputs = data_p.clone()
+            d_data_inputs[labels > eps] = fakes_legacy[labels > eps]
             d_data_p = data_p.clone()
             d_data_d = data_d.clone()
             d_labels = labels.clone()
             if torch.sum(labels < eps) > 0:
                 fakes = postprocess(net_g(preprocess(data_p[labels < eps].unsqueeze(1), data_d[labels < eps].unsqueeze(1)))).squeeze(1)
                 d_data_p[labels < eps] = fakes.detach().clone()
-                fakes_legacy = postprocess(model_legacy(preprocess(data_p[labels < eps].unsqueeze(1), data_d[labels < eps].unsqueeze(1)))).squeeze(1).detach()
-                d_data_p = torch.cat((d_data_p, fakes_legacy), dim=0)
+                d_data_inputs = torch.cat((d_data_inputs, data_p[labels < eps]), dim=0)
+                d_data_p = torch.cat((d_data_p, fakes_legacy[labels < eps]), dim=0)
                 d_data_d = torch.cat((d_data_d, data_d[labels < eps]), dim=0)
                 d_labels = torch.cat((d_labels, torch.ones((fakes_legacy.shape[0],), device=device)), dim=0)
 
-            outputs = net_d(preprocess_d(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1)))
+            outputs = net_d(preprocess_d(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), d_data_inputs.unsqueeze(1)))
             loss = F.binary_cross_entropy(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))#, weight=((d_labels > eps) * (data_ratio - 1) + 1).unsqueeze(1).expand(-1, outputs.shape[1]))
             disc_loss.append(loss.item())
 
@@ -788,10 +795,11 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             net_d.eval()
             if torch.sum(labels < eps) > 0:
+                g_s_data_inputs = data_p[labels < eps].clone()
                 g_s_data_p = fakes.clone()
                 g_s_data_d = data_d[labels < eps].clone()
                 g_s_labels = torch.zeros((g_s_data_p.shape[0],), device=device)
-                outputs = net_d(preprocess_d(g_s_data_p.unsqueeze(1), g_s_data_d.unsqueeze(1)))
+                outputs = net_d(preprocess_d(g_s_data_p.unsqueeze(1), g_s_data_d.unsqueeze(1), g_s_data_inputs.unsqueeze(1)))
 
                 loss_total = 0
                 loss = F.binary_cross_entropy(outputs, 1 - g_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
