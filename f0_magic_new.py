@@ -802,7 +802,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 loss_total += loss * c_loss_factor
                 contrastive_loss.append(loss.item())
 
-                contrastive_loss_ref.append(F.mse_loss(fakes, fakes_legacy).item())#get_contrastive_loss(fakes, data_p[labels < eps])
+                contrastive_loss_ref.append(F.mse_loss(fakes, fakes_legacy).item())
 
                 if is_train:
                     optimizer_g.zero_grad()
