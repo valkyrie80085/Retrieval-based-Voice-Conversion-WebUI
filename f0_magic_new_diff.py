@@ -220,34 +220,14 @@ def zero_sensative_blur(x):
     return x_blurred
 
 
-t_dim = 32
-class SinusoidalPosEmb(nn.Module):
-    def __init__(self, dim, theta = 10000):
-        super().__init__()
-        self.dim = dim
-        self.theta = theta
-
-    def forward(self, x):
-        device = x.device
-        half_dim = self.dim // 2
-        emb = math.log(self.theta) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=device) * -emb)
-        emb = x[:, None] * emb[None, :]
-        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
-        return emb
-
-sinu_pos_emb = SinusoidalPosEmb(t_dim) 
-
-
 mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
 std = 80
-def preprocess(x, y, z, t):
+def preprocess(x, y, z):
     x_ret = (x - mn_p) / std_p
     y_ret = (y - mn_d) / std_d
     z_ret = (z - mn_p) / std_p
-    t_emb = sinu_pos_emb(t).unsqueeze(2).expand(-1, -1, x_ret.shape[2])
-    return torch.cat((x_ret, y_ret, z_ret, t_emb), dim=1)
+    return torch.cat((x_ret, y_ret, z_ret), dim=1)
 
 
 def preprocess_legacy(x, y):
@@ -751,7 +731,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         test_others_data_p = torch.stack(tuple(pitch for pitch, phone_diff in test_others_data))
         test_others_data_d = torch.stack(tuple(phone_diff for pitch, phone_diff in test_others_data))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net_g = PitchContourGenerator(3 + t_dim).to(device)
+    net_g = PitchContourGenerator(3).to(device)
     optimizer_g = optim.AdamW(net_g.parameters(), lr=lr_g)
     epoch = 0
 
@@ -774,7 +754,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             print("Model initialized with random weights")
     except:
         epoch = 0
-        net_g = PitchContourGenerator(3 + t_dim).to(device)
+        net_g = PitchContourGenerator(3).to(device)
         optimizer_g = optim.AdamW(net_g.parameters(), lr=lr_g)
         print("Model initialized with random weights")
 
@@ -826,7 +806,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             ref[labels > eps] = data_p[labels > eps]
             
             t = torch.randint(0, num_timesteps, (data_p.shape[0],), device=device) 
-            outputs = postprocess(net_g(preprocess(get_noise(ref, t).unsqueeze(1), data_d.unsqueeze(1), inputs.unsqueeze(1), t))).squeeze(1)
+            outputs = postprocess(net_g(preprocess(get_noise(ref, t).unsqueeze(1), data_d.unsqueeze(1), inputs.unsqueeze(1)))).squeeze(1)
             loss = F.mse_loss(outputs, ref)
             loss = extract(loss_weight, t, loss.shape) * loss
             loss = loss.mean()
