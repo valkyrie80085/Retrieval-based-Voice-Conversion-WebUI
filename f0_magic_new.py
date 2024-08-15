@@ -676,8 +676,8 @@ def get_contrastive_loss(output, ref):
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
     from f0_magic_gen_legacy import PitchContourGenerator as PitchContourGeneratorLegacy
     model_legacy = PitchContourGeneratorLegacy().to("cuda")
-    model_legacy.eval()
     model_legacy.load_state_dict(torch.load("model_.pt")) 
+    model_legacy.eval()
     if train_target_data:
         train_target_data_p = torch.stack(tuple(pitch for pitch, phone_diff in train_target_data))
         train_target_data_d = torch.stack(tuple(phone_diff for pitch, phone_diff in train_target_data))

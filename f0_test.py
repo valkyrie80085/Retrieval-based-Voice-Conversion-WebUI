@@ -50,8 +50,8 @@ if not model_path.endswith(".pt"):
     model_path += ".pt"
 
 model = PitchContourGenerator().to("cuda")
-model.eval()
 model.load_state_dict(torch.load(model_path)) 
+model.eval()
 print(f"Model loaded from '{model_path:s}'")
 
 input_file_p = os.path.splitext(audio_file)[0] + " p.npy"
