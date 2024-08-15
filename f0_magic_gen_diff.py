@@ -81,9 +81,6 @@ class PitchContourGenerator(nn.Module):
             self.downsamples.append(nn.MaxPool1d(kernel_size=kernel_size_pool[i]))
             self.upsamples.append(nn.Upsample(scale_factor=kernel_size_pool[i]))
 
-
-        self.bridge_idmappings1 = nn.Conv1d(channels[-2], channels[-1], 1, padding="same")
-
         self.bridge1 = resBlock(channels[-2], channels[-1], channels[-1], bridge_width, time_dim)
         self.bridge2 = resBlock(channels[-1], channels[-1], channels[-2], bridge_width, time_dim)
 
