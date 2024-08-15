@@ -55,7 +55,7 @@ class resBlock(nn.Module):
 
 
 class PitchContourGenerator(nn.Module):
-    def __init__(self, c=2):
+    def __init__(self, c=3):
         super(PitchContourGenerator, self).__init__()
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
