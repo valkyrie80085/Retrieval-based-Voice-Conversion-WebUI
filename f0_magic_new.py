@@ -753,7 +753,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     while True:
         epoch += 1
 
-        def work(data_p, data_d, labels, is_train, disc_loss, contrastive_loss, gen_loss):
+        def work(data_p, data_d, labels, is_train, disc_loss, contrastive_loss, gen_loss, contrastive_loss_ref):
             if is_train:
                 net_d.train()
                 net_g.train()
@@ -802,6 +802,8 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 loss_total += loss * c_loss_factor
                 contrastive_loss.append(loss.item())
 
+                contrastive_loss_ref.append(F.mse_loss(fakes, fakes_legacy).item())#get_contrastive_loss(fakes, data_p[labels < eps])
+
                 if is_train:
                     optimizer_g.zero_grad()
                     loss_total.backward()
@@ -811,37 +813,40 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         train_disc_loss = []
         train_gen_loss = []
         train_contrastive_loss = []
+        train_contrastive_loss_ref = []
         for batch_idx, (data_p, data_d, labels) in enumerate(train_loader):
             if batch_idx % 10 == 0:
                 print(f"train {batch_idx}/{len(train_loader)}")
-            work(data_p, data_d, labels, True, train_disc_loss, train_contrastive_loss, train_gen_loss)
+            work(data_p, data_d, labels, True, train_disc_loss, train_contrastive_loss, train_gen_loss, train_contrastive_loss_ref)
             
         train_disc_loss = np.mean(train_disc_loss)
         train_contrastive_loss = np.mean(train_contrastive_loss)
         train_gen_loss = np.mean(train_gen_loss)
         train_loss = train_contrastive_loss * c_loss_factor + train_gen_loss
+        train_contrastive_loss_ref = np.mean(train_contrastive_loss_ref)
 
         if USE_TEST_SET:
             test_disc_loss = []
             test_gen_loss = []
             test_contrastive_loss = []
-            test_imitation_loss = []
+            test_contrastive_loss_ref = []
             for batch_idx, (data_p, data_d, labels) in enumerate(test_loader):
                 if batch_idx % 10 == 0:
                     print(f"val {batch_idx}/{len(test_loader)}")
-                work(data_p, data_d, labels, False, test_disc_loss, test_contrastive_loss, test_gen_loss)
+                work(data_p, data_d, labels, False, test_disc_loss, test_contrastive_loss, test_gen_loss, test_contrastive_loss_ref)
                 
             test_disc_loss = np.mean(test_disc_loss)
             test_contrastive_loss = np.mean(test_contrastive_loss)
             test_gen_loss = np.mean(test_gen_loss)
             test_loss = test_contrastive_loss * c_loss_factor + test_gen_loss
+            test_contrastive_loss_ref = np.mean(test_contrastive_loss_ref)
 
 
         if epoch % 1 == 0:
             f0_magic_log(f"Epoch: {epoch:d}")
-            f0_magic_log(f"t_loss: {train_loss:.4f} t_loss_c: {train_contrastive_loss:.4f} t_loss_g: {train_gen_loss:.4f} t_loss_d: {train_disc_loss:.4f}")
+            f0_magic_log(f"t_loss: {train_loss:.4f} t_loss_c: {train_contrastive_loss:.4f} t_loss_g: {train_gen_loss:.4f} t_loss_d: {train_disc_loss:.4f} t_loss_c_ref: {train_contrastive_loss_ref:.4f}")
             if USE_TEST_SET:
-                f0_magic_log(f"v_loss: {test_loss:.4f} t_loss_c: {test_contrastive_loss:.4f} v_loss_g: {test_gen_loss:.4f} v_loss_d: {test_disc_loss:.4f}")
+                f0_magic_log(f"v_loss: {test_loss:.4f} t_loss_c: {test_contrastive_loss:.4f} v_loss_g: {test_gen_loss:.4f} v_loss_d: {test_disc_loss:.4f} v_loss_c_ref: {test_contrastive_loss_ref:.4f}")
             checkpoint = { 
                 'epoch': epoch,
                 'net_g': net_g.state_dict(),
