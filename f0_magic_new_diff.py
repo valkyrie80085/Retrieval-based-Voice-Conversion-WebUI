@@ -85,7 +85,7 @@ alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value = 1.)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
 sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod)
-loss_weight = (alphas_cumprod / (1 - alphas_cumprod))
+loss_weight = alphas_cumprod / (1 - alphas_cumprod)
 
 posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
 posterior_log_variance_clipped = torch.log(posterior_variance.clamp(min=1e-20))
@@ -103,7 +103,7 @@ posterior_mean_coef2 = posterior_mean_coef2.to(device)
 mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
 def get_noise(x, t):
-    x_normalized = (x - mn_p) / std_p)
+    x_normalized = (x - mn_p) / std_p
     ret_normalized = extract(sqrt_alphas_cumprod, t, x.shape) * x + extract(sqrt_one_minus_alphas_cumprod, t, x.shape) * torch.randn_like(x)
     return ret_normalized * std_p + mn_p
 
@@ -273,7 +273,6 @@ def postprocess(x):
     x_ret = x.clone()
     x_ret = x * std_p + mn_p
     x_ret[x_ret < mel_min * 0.5] = 0
-#    x_ret[x < eps] = (2 * mel_min - mel_max - mn_p) / std_p
     return x_ret
 
 
