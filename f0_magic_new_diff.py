@@ -88,8 +88,6 @@ sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod).to(device)
 loss_weight = (alphas_cumprod / (1 - alphas_cumprod)).to(device)
 
 def get_noise(x, t):
-    if isinstance(t, (int, float)):
-        t = torch.tensor(t, device=x.device).reshape(-1, 1).repeat(x.shape[0], 1)
     return extract(sqrt_alphas_cumprod, t, x.shape) * x + extract(sqrt_one_minus_alphas_cumprod, t, x.shape) * torch.randn_like(x)
 
 

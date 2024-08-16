@@ -79,12 +79,12 @@ input_phone_diff_pad = np.pad(input_phone_diff, (padding_size, padding_size))
 extra = segment_size - ((len(modified_contour_mel) - 1) % segment_size + 1)
 modified_contour_mel = np.pad(modified_contour_mel, (extra, 0))
 input_phone_diff_pad = np.pad(input_phone_diff_pad, (extra, 0))
-modified_contour_mel_tensor = torch.tensor(modified_contour_mel, dtype=torch.float32, device="cuda")
+input_contour_mel_tensor = torch.tensor(modified_contour_mel, dtype=torch.float32, device="cuda")
 input_phone_diff_tensor = torch.tensor(input_phone_diff_pad, dtype=torch.float32, device="cuda")
-#input_phone_diff_tensor += torch.randn_like(input_phone_diff_tensor) * noise_amp
+#input_contour_mel_tensor += torch.randn_like(input_contour_mel_tensor) * noise_amp
 if snap_sensitivity is not None:
-    input_phone_diff_tensor = snap(input_phone_diff_tensor, snap_sensitivity)
-modified_contour_mel_tensor = postprocess(model(preprocess(input_phone_diff_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0)))).squeeze(0).squeeze(0)
+    input_contour_mel_tensor = snap(input_contour_mel_tensor, snap_sensitivity)
+modified_contour_mel_tensor = postprocess(model(preprocess(input_contour_mel_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0)))).detach().squeeze(0).squeeze(0)
 modified_contour_mel = modified_contour_mel_tensor.detach().cpu().numpy()
 modified_contour_mel = modified_contour_mel[extra:]
 modified_contour_mel = modified_contour_mel[padding_size:-padding_size]

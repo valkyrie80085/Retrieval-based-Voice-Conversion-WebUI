@@ -6,6 +6,7 @@ from f0_magic_new_diff import compute_f0_inference, compute_d, resize, pitch_inv
 from f0_magic_new_diff import postprocess, preprocess, padding_size
 from f0_magic_gen_diff import PitchContourGenerator, segment_size
 from f0_magic_new_diff import snap
+from f0_magic_new_diff import num_timesteps, get_noise, mel_min
 
 import random
 import os
@@ -72,12 +73,18 @@ input_phone_diff_pad = np.pad(input_phone_diff, (padding_size, padding_size))
 extra = segment_size - ((len(modified_contour_mel) - 1) % segment_size + 1)
 modified_contour_mel = np.pad(modified_contour_mel, (extra, 0))
 input_phone_diff_pad = np.pad(input_phone_diff_pad, (extra, 0))
-modified_contour_mel_tensor = torch.tensor(modified_contour_mel, dtype=torch.float32, device="cuda")
+input_contour_mel_tensor = torch.tensor(modified_contour_mel, dtype=torch.float32, device="cuda")
 input_phone_diff_tensor = torch.tensor(input_phone_diff_pad, dtype=torch.float32, device="cuda")
-#modified_contour_mel_tensor += torch.randn_like(modified_contour_mel_tensor) * noise_amp
+#input_contour_mel_tensor += torch.randn_like(input_contour_mel_tensor) * noise_amp
 if snap_sensitivity is not None:
-    modified_contour_mel_tensor = snap(modified_contour_mel_tensor, snap_sensitivity)
-modified_contour_mel_tensor = postprocess(model(preprocess(modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0)))).squeeze(0).squeeze(0)
+    input_contour_mel_tensor = snap(input_contour_mel_tensor, snap_sensitivity)
+modified_contour_mel_tensor = torch.randn_like(input_contour_mel_tensor)
+for t in reversed(range(num_timesteps)):
+    t_tensor = torch.tensor(t, device=modified_contour_mel_tensor.device).reshape(1)
+    modified_contour_mel_tensor = postprocess(model(preprocess(get_noise(modified_contour_mel_tensor, t_tensor).unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0), input_contour_mel_tensor.unsqueeze(0).unsqueeze(0)), t_tensor)).detach().squeeze(0).squeeze(0)
+    modified_contour_mel_tensor[input_contour_mel_tensor < mel_min] = 0
+    from torch.nn import functional as F
+    print(t, F.mse_loss(modified_contour_mel_tensor, input_contour_mel_tensor))
 modified_contour_mel = modified_contour_mel_tensor.detach().cpu().numpy()
 modified_contour_mel = modified_contour_mel[extra:]
 modified_contour_mel = modified_contour_mel[padding_size:-padding_size]
