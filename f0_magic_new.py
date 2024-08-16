@@ -73,11 +73,11 @@ def gaussian_kernel1d_torch(sigma, width=None):
     if width is None:
         width = round(sigma * 4)
     distance = torch.arange(
-        -width, width + 1, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu") 
-    ).detach()
+            -width, width + 1, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu") 
+            ).detach()
     gaussian = torch.exp(
-        -(distance ** 2) / (2 * sigma ** 2)
-    )
+            -(distance ** 2) / (2 * sigma ** 2)
+            )
     gaussian /= gaussian.sum()
     kernel = gaussian[None, None]
     return kernel
@@ -225,20 +225,20 @@ def resize_with_zeros(contour, target_len):
     a = contour.copy()
     a[a < eps] = np.nan
     a = np.interp(
-        np.arange(0, len(a) * target_len, len(a)) / target_len,
-        np.arange(0, len(a)),
-        a
-    )
+            np.arange(0, len(a) * target_len, len(a)) / target_len,
+            np.arange(0, len(a)),
+            a
+            )
     a = np.nan_to_num(a)
     return a
 
 
 def resize(a, target_len):
     return np.interp(
-        np.arange(0, len(a) * target_len, len(a)) / target_len,
-        np.arange(0, len(a)),
-        a
-    )
+            np.arange(0, len(a) * target_len, len(a)) / target_len,
+            np.arange(0, len(a)),
+            a
+            )
 
 
 hubert_model = None
@@ -271,10 +271,10 @@ def trim_f0(f0, audio, index_file, version="v2"):
 
     pd = npy[:, -1]
     pd = np.interp(
-        np.arange(0, len(pd) * len(f0), len(pd)) / len(f0),
-        np.arange(0, len(pd)),
-        pd
-    )
+            np.arange(0, len(pd) * len(f0), len(pd)) / len(f0),
+            np.arange(0, len(pd)),
+            pd
+            )
 
     threshold = 0.5
     for it in (range(len(f0)), reversed(range(len(f0)))):
@@ -296,15 +296,15 @@ def compute_f0_inference(path, index_file=""):
     print("computing f0 for: " + path)
     x = load_audio(path, 44100)
     x = librosa.resample(
-        x, orig_sr=44100, target_sr=sr
-    )
+            x, orig_sr=44100, target_sr=sr
+            )
 
     global model_rmvpe
     if model_rmvpe is None:
         from infer.lib.rmvpe import RMVPE
         print("Loading rmvpe model")
         model_rmvpe = RMVPE(
-            "assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
+                "assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
     f0 = model_rmvpe.infer_from_audio(x, thred=0.03)
 
     # Pick a batch size that doesn't cause memory errors on your gpu
@@ -321,16 +321,16 @@ def compute_f0_inference(path, index_file=""):
     # Compute pitch using first gpu
     audio_tensor = torch.tensor(np.copy(x))[None].float()
     f0_crepe, pd = torchcrepe.predict(
-        audio_tensor,
-        16000,
-        160,
-        50,
-        1100,
-        model,
-        batch_size=batch_size,
-        device=torch_device,
-        return_periodicity=True,
-    )
+            audio_tensor,
+            16000,
+            160,
+            50,
+            1100,
+            model,
+            batch_size=batch_size,
+            device=torch_device,
+            return_periodicity=True,
+            )
     pd = torchcrepe.filter.median(pd, 3)
     f0_crepe = torchcrepe.filter.mean(f0_crepe, 3)
     f0_crepe[pd < 0.1] = 0
@@ -363,15 +363,15 @@ def compute_f0(path):
     print("computing f0 for: " + path)
     x = load_audio(path, 44100)
     x = librosa.resample(
-        x, orig_sr=44100, target_sr=sr
-    )
+            x, orig_sr=44100, target_sr=sr
+            )
 
     global model_rmvpe
     if model_rmvpe is None:
         from infer.lib.rmvpe import RMVPE
         print("Loading rmvpe model")
         model_rmvpe = RMVPE(
-            "assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
+                "assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
     f0 = model_rmvpe.infer_from_audio(x, thred=0.03)
 
     # Pick a batch size that doesn't cause memory errors on your gpu
@@ -388,16 +388,16 @@ def compute_f0(path):
     # Compute pitch using first gpu
     audio_tensor = torch.tensor(np.copy(x))[None].float()
     f0_crepe, pd = torchcrepe.predict(
-        audio_tensor,
-        16000,
-        160,
-        50,
-        1100,
-        model,
-        batch_size=batch_size,
-        device=torch_device,
-        return_periodicity=True,
-    )
+            audio_tensor,
+            16000,
+            160,
+            50,
+            1100,
+            model,
+            batch_size=batch_size,
+            device=torch_device,
+            return_periodicity=True,
+            )
     pd = torchcrepe.filter.median(pd, 3)
     f0_crepe = torchcrepe.filter.mean(f0_crepe, 3)
     f0_crepe[pd < 0.1] = 0
@@ -424,7 +424,7 @@ TARGET_PATH = "C:/datasets/singing_ai/f0_magic/target"
 OTHERS_PATH = "C:/datasets/singing_ai/f0_magic/others"
 
 def walk(path):
-   return sum(([os.path.join(dirpath, file_name) for file_name in filenames] for (dirpath, dirnames, filenames) in os.walk(path)), [])
+    return sum(([os.path.join(dirpath, file_name) for file_name in filenames] for (dirpath, dirnames, filenames) in os.walk(path)), [])
 
 
 def compute_d(path):
@@ -436,8 +436,8 @@ def compute_d(path):
 
     audio = load_audio(path, 44100)
     audio = librosa.resample(
-        audio, orig_sr=44100, target_sr=16000
-    )
+            audio, orig_sr=44100, target_sr=16000
+            )
 
     feats = extract_features_simple(audio, model=hubert_model, version="v2", device="cuda", is_half=config.is_half)
     npy = feats[0].cpu().numpy()
@@ -642,7 +642,7 @@ def load_data():
                             contour_final = pitch_shift_mel(contour_sliced, shift_real)
                             phone_diff_final = phone_diff_sliced
                             others_data.append((torch.tensor(contour_final, dtype=torch.float32), torch.tensor(phone_diff_final, dtype=torch.float32)))
-                        
+
 
     print("Train target data count:", len(train_target_data))
     print("Train others data count:", len(train_others_data))
@@ -826,7 +826,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             if batch_idx % 10 == 0:
                 print(f"train {batch_idx}/{len(train_loader)}")
             work(data_p, data_d, labels, True, train_disc_loss, train_contrastive_loss, train_gen_loss, train_contrastive_loss_ref)
-            
+
         train_disc_loss = np.mean(train_disc_loss)
         train_contrastive_loss = np.mean(train_contrastive_loss)
         train_gen_loss = np.mean(train_gen_loss)
@@ -842,7 +842,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 if batch_idx % 10 == 0:
                     print(f"val {batch_idx}/{len(test_loader)}")
                 work(data_p, data_d, labels, False, test_disc_loss, test_contrastive_loss, test_gen_loss, test_contrastive_loss_ref)
-                
+
             test_disc_loss = np.mean(test_disc_loss)
             test_contrastive_loss = np.mean(test_contrastive_loss)
             test_gen_loss = np.mean(test_gen_loss)
@@ -856,11 +856,11 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             if USE_TEST_SET:
                 f0_magic_log(f"v_loss: {test_loss:.4f} t_loss_c: {test_contrastive_loss:.4f} v_loss_g: {test_gen_loss:.4f} v_loss_d: {test_disc_loss:.4f} v_loss_c_ref: {test_contrastive_loss_ref:.4f}")
             checkpoint = { 
-                'epoch': epoch,
-                'net_g': net_g.state_dict(),
-                'net_d': net_d.state_dict(),
-                'optimizer_g': optimizer_g.state_dict(),
-                'optimizer_d': optimizer_d.state_dict()}
+                          'epoch': epoch,
+                          'net_g': net_g.state_dict(),
+                          'net_d': net_d.state_dict(),
+                          'optimizer_g': optimizer_g.state_dict(),
+                          'optimizer_d': optimizer_d.state_dict()}
             while True:
                 try:
                     torch.save(net_g.state_dict(), MODEL_FILE) 
