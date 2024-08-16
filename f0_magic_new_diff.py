@@ -83,12 +83,38 @@ alphas_cumprod = torch.cumprod(alphas, dim=0)
 alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value = 1.)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod).to(device)
-sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod).to(device)
-loss_weight = (alphas_cumprod / (1 - alphas_cumprod)).to(device)
+sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
+sqrt_one_minus_alphas_cumprod = torch.sqrt(1. - alphas_cumprod)
+loss_weight = (alphas_cumprod / (1 - alphas_cumprod))
 
+posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
+posterior_log_variance_clipped = torch.log(posterior_variance.clamp(min=1e-20))
+posterior_mean_coef1 = betas * torch.sqrt(alphas_cumprod_prev) / (1. - alphas_cumprod)
+posterior_mean_coef2 = (1. - alphas_cumprod_prev) * torch.sqrt(alphas) / (1. - alphas_cumprod)
+
+sqrt_alphas_cumprod = sqrt_alphas_cumprod.to(device)
+sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod.to(device)
+loss_weight = loss_weight.to(device)
+posterior_log_variance_clipped = posterior_log_variance_clipped.to(device)
+posterior_mean_coef1 = posterior_mean_coef1.to(device)
+posterior_mean_coef2 = posterior_mean_coef2.to(device)
+
+
+mn_p, std_p = 550, 120
+mn_d, std_d = 3.8, 1.7
 def get_noise(x, t):
-    return extract(sqrt_alphas_cumprod, t, x.shape) * x + extract(sqrt_one_minus_alphas_cumprod, t, x.shape) * torch.randn_like(x)
+    x_normalized = (x - mn_p) / std_p)
+    ret_normalized = extract(sqrt_alphas_cumprod, t, x.shape) * x + extract(sqrt_one_minus_alphas_cumprod, t, x.shape) * torch.randn_like(x)
+    return ret_normalized * std_p + mn_p
+
+
+def sample(model, x_t, d, p, t):
+    x_start = model(preprocess(x_t * std_p + mn_p, d, p), t)
+    mean = extract(posterior_mean_coef1, t, x_t.shape) * x_start + extract(posterior_mean_coef2, t, x_t.shape) * x_t
+    log_variance = extract(posterior_log_variance_clipped, t, x_t.shape)
+    noise = torch.randn_like(x_t)
+    noise[t < eps] = 0
+    return mean + (0.5 * log_variance).exp() * noise
 
 
 def f0_magic_log(s):
@@ -220,9 +246,6 @@ def zero_sensative_blur(x):
     return x_blurred
 
 
-mn_p, std_p = 550, 120
-mn_d, std_d = 3.8, 1.7
-std = 80
 def preprocess(x, y, z):
     x_ret = (x - mn_p) / std_p
     y_ret = (y - mn_d) / std_d
