@@ -189,7 +189,7 @@ def zero_sensative_blur(x):
 
 mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
-std_s = 80
+std_s = 20
 def preprocess(x, y):
     x_ret = (x - mn_p) / std_p
     y_ret = (y - mn_d) / std_d
