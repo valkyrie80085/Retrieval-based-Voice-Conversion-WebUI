@@ -41,3 +41,4 @@ ffprobe.*
 *.pt
 f0_test_config.json
 *.log
+test.py
