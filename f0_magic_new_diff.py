@@ -22,6 +22,8 @@ from scipy.interpolate import CubicSpline
 from configs.config import Config
 from infer.modules.vc.utils import load_hubert
 from f0_magic_gen_diff import PitchContourGenerator, segment_size
+from f0_magic import preprocess_s as preprocess_legacy
+from f0_magic import postprocess as postprocess_legacy
 
 padding_size = 2 * segment_size
 
@@ -99,7 +101,7 @@ posterior_mean_coef1 = posterior_mean_coef1.to(device)
 posterior_mean_coef2 = posterior_mean_coef2.to(device)
 
 
-mn_p, std_p = 550, 120
+mn_p, std_p = 550, 40
 mn_d, std_d = 3.8, 1.7
 def get_noise(x, t):
     x_normalized = (x - mn_p) / std_p
@@ -251,12 +253,6 @@ def preprocess(x, y, z):
     y_ret = (y - mn_d) / std_d
     z_ret = (z - mn_p) / std_p
     return torch.cat((x_ret, y_ret, z_ret), dim=1)
-
-
-def preprocess_legacy(x, y):
-    x_ret = (x - mn_p) / std_p
-    y_ret = (y - mn_d) / std_d
-    return torch.cat((x_ret, y_ret), dim=1)
 
 
 def preprocess_d(x, y):
@@ -819,7 +815,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data_p = data_p[:, offset:data_p.shape[1] - max_offset + offset]
             data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
             data_p = pitch_shift_tensor(data_p, torch.randn(1, device=data_p.device) * 0.5)
-            outputs_legacy = postprocess(model_legacy(preprocess_legacy(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1).detach()
+            outputs_legacy = postprocess_legacy(model_legacy(preprocess_legacy(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1).detach()
 
             inputs, ref = torch.zeros_like(data_p), torch.zeros_like(data_p)
             inputs[labels < eps] = data_p[labels < eps]
