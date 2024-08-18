@@ -31,7 +31,7 @@ eps = 1e-3
 mel_min = 1127 * math.log(1 + 50 / 700)
 mel_max = 1127 * math.log(1 + 1100 / 700)
 
-num_timesteps = 64
+num_timesteps = 256
 multiplicity_target = 172
 multiplicity_others = 20
 max_offset = round(segment_size / 10)
@@ -99,7 +99,7 @@ posterior_mean_coef1 = posterior_mean_coef1.to(device)
 posterior_mean_coef2 = posterior_mean_coef2.to(device)
 
 
-mn_p, std_p = 550, 120
+mn_p, std_p = 550, 30
 mn_d, std_d = 3.8, 1.7
 def get_noise(x, t):
     x_normalized = (x - mn_p) / std_p
