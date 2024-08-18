@@ -99,7 +99,7 @@ posterior_mean_coef1 = posterior_mean_coef1.to(device)
 posterior_mean_coef2 = posterior_mean_coef2.to(device)
 
 
-mn_p, std_p = 550, 30
+mn_p, std_p = 550, 40
 mn_d, std_d = 3.8, 1.7
 def get_noise(x, t):
     x_normalized = (x - mn_p) / std_p
@@ -109,6 +109,7 @@ def get_noise(x, t):
 
 def sample(model, x_t, d, p, t):
     x_start = model(preprocess(x_t * std_p + mn_p, d, p), t)
+    x_start = (postprocess(x_start) - mn_p) / std_p
     mean = extract(posterior_mean_coef1, t, x_t.shape) * x_start + extract(posterior_mean_coef2, t, x_t.shape) * x_t
     log_variance = extract(posterior_log_variance_clipped, t, x_t.shape)
     noise = torch.randn_like(x_t)
