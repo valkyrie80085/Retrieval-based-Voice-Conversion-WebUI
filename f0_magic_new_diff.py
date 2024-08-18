@@ -99,7 +99,7 @@ posterior_mean_coef1 = posterior_mean_coef1.to(device)
 posterior_mean_coef2 = posterior_mean_coef2.to(device)
 
 
-mn_p, std_p = 550, 40
+mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
 def get_noise(x, t):
     x_normalized = (x - mn_p) / std_p
