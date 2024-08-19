@@ -250,19 +250,15 @@ def zero_sensative_blur(x):
 
 def preprocess(x, y, z):
     x_ret = (x - mn_p) / std_p
-    y_ret = (y - mn_d) / std_d
-    z_ret = (z - mn_p) / std_p
-    return torch.cat((x_ret, y_ret, z_ret), dim=1)
 
-
-def preprocess_d(x, y):
-    x_ret = (x - mn_p) / std_p
     y_ret = y.clone()
     y_ret[x < eps] = 0
     y_ret = torch.clamp(y_ret, min=d_clip_threshold)
     y_ret = y_ret + torch.randn_like(y_ret) * preprocess_noise_amp_d
     y_ret = (y_ret - mn_d) / std_d
-    return torch.cat((x_ret, y_ret), dim=1)
+
+    z_ret = (z - mn_p) / std_p
+    return torch.cat((x_ret, y_ret, z_ret), dim=1)
 
 
 def postprocess(x):
