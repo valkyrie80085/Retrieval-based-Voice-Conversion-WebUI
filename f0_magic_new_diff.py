@@ -52,7 +52,7 @@ STUDENT_START_EPOCH = 101
 BATCH_SIZE = 32
 
 USE_TEST_SET = False
-EPOCH_PER_BAK = 5
+EPOCH_PER_BAK = 10
 
 lr_g = 1e-5
 c_loss_factor = 0.5
@@ -101,7 +101,7 @@ posterior_mean_coef1 = posterior_mean_coef1.to(device)
 posterior_mean_coef2 = posterior_mean_coef2.to(device)
 
 
-mn_p, std_p = 550, 40
+mn_p, std_p = 550, 20
 mn_d, std_d = 3.8, 1.7
 def get_noise(x, t):
     x_normalized = (x - mn_p) / std_p
