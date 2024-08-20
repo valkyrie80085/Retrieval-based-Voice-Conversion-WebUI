@@ -717,6 +717,10 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             net_d.load_state_dict(checkpoint['net_d'])
             optimizer_g.load_state_dict(checkpoint['optimizer_g'])
             optimizer_d.load_state_dict(checkpoint['optimizer_d'])
+            for g in optimizer_g.param_groups:
+                g['lr'] = lr_g
+            for g in optimizer_d.param_groups:
+                g['lr'] = lr_d
             print(f"Data loaded from '{CHECKPOINT_FILE:s}'")
         else:
             print("Model initialized with random weights")
