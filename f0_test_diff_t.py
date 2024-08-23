@@ -2,10 +2,11 @@ import torch
 
 import numpy as np
 
-from f0_magic import compute_f0_inference, compute_d, resize, pitch_invert_mel, pitch_shift_mel
-from f0_magic import postprocess, preprocess_s, preprocess_t, padding_size
-from f0_magic_gen_legacy import PitchContourGenerator, segment_size
-from f0_magic import snap
+from f0_magic_new_diff_t import compute_f0_inference, compute_d, resize, pitch_invert_mel, pitch_shift_mel
+from f0_magic_new_diff_t import postprocess, preprocess, padding_size
+from f0_magic_gen_diff import PitchContourGenerator, segment_size
+from f0_magic_new_diff_t import snap
+from f0_magic_new_diff_t import num_timesteps, sample
 
 import random
 import os
@@ -23,13 +24,6 @@ with open('f0_test_config.json', 'r') as openfile:
     index_file = data["index_file"]
     audio_file = data["audio_file"]
     pitch_shift = float(data["pitch_shift"])
-    try:
-        if data["model_type"].lower().startswith("t"):
-            preprocess = preprocess_t
-        else:
-            preprocess = preprocess_s
-    except:
-        preprocess = preprocess_s
     try:
         invert_axis = data["invert_axis"]
     except:
@@ -84,9 +78,13 @@ input_phone_diff_tensor = torch.tensor(input_phone_diff_pad, dtype=torch.float32
 #input_contour_mel_tensor += torch.randn_like(input_contour_mel_tensor) * noise_amp
 if snap_sensitivity is not None:
     input_contour_mel_tensor = snap(input_contour_mel_tensor, snap_sensitivity)
-modified_contour_mel_tensor = postprocess(model(preprocess(input_contour_mel_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0)))).detach().squeeze(0).squeeze(0)
-#modified_contour_mel_tensor = postprocess(model(preprocess(modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0)))).detach().squeeze(0).squeeze(0)
-modified_contour_mel = modified_contour_mel_tensor.detach().cpu().numpy()
+modified_contour_mel_tensor = torch.randn_like(input_contour_mel_tensor)
+for t in reversed(range(num_timesteps)):
+    t_tensor = torch.tensor(t, device=modified_contour_mel_tensor.device).reshape(1)
+    modified_contour_mel_tensor = sample(model, modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0), input_contour_mel_tensor.unsqueeze(0).unsqueeze(0), t_tensor).detach().squeeze(0).squeeze(0)
+    from torch.nn import functional as F
+    print(t, F.mse_loss(postprocess(modified_contour_mel_tensor), input_contour_mel_tensor))
+modified_contour_mel = postprocess(modified_contour_mel_tensor).detach().cpu().numpy()
 modified_contour_mel = modified_contour_mel[extra:]
 modified_contour_mel = modified_contour_mel[padding_size:-padding_size]
 #modified_contour_mel = median_filter(modified_contour_mel, size=17)

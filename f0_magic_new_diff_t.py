@@ -52,7 +52,7 @@ STUDENT_START_EPOCH = 101
 BATCH_SIZE = 32
 
 USE_TEST_SET = False
-EPOCH_PER_BAK = 10
+EPOCH_PER_BAK = 20
 
 lr_g = 1e-5
 c_loss_factor = 0.5
@@ -122,7 +122,7 @@ def sample(model, x_t, d, p, t):
 def f0_magic_log(s):
     while True:
         try:
-            with open("f0_magic_new.log", "a") as f:
+            with open("f0_magic_new_t.log", "a") as f:
                 print(s, file=f)
             break
         except:
@@ -903,4 +903,4 @@ if __name__ == "__main__":
 #    np.random.seed(42)
 
     train_target_data, train_others_data, test_target_data, test_others_data = load_data()
-    train_model("new", train_target_data, train_others_data, test_target_data, test_others_data)
+    train_model("new_t", train_target_data, train_others_data, test_target_data, test_others_data)
