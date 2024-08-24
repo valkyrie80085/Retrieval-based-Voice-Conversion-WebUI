@@ -84,7 +84,8 @@ for t in reversed(range(num_timesteps)):
     modified_contour_mel_tensor = sample(model, modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0), input_contour_mel_tensor.unsqueeze(0).unsqueeze(0), t_tensor).detach().squeeze(0).squeeze(0)
     from torch.nn import functional as F
     print(t, F.mse_loss(postprocess(modified_contour_mel_tensor), input_contour_mel_tensor))
-modified_contour_mel = postprocess(modified_contour_mel_tensor).detach().cpu().numpy()
+modified_contour_mel_tensor = postprocess(modified_contour_mel_tensor).detach()
+modified_contour_mel = modified_contour_mel_tensor.detach().cpu().numpy()
 modified_contour_mel = modified_contour_mel[extra:]
 modified_contour_mel = modified_contour_mel[padding_size:-padding_size]
 #modified_contour_mel = median_filter(modified_contour_mel, size=17)

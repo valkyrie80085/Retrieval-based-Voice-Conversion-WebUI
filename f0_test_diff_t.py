@@ -8,6 +8,13 @@ from f0_magic_gen_diff import PitchContourGenerator, segment_size
 from f0_magic_new_diff_t import snap
 from f0_magic_new_diff_t import num_timesteps, sample
 
+from f0_magic_gen_legacy import PitchContourGenerator as PitchContourGeneratorLegacy
+from f0_magic import preprocess_s as preprocess_legacy
+from f0_magic import postprocess as postprocess_legacy
+model_legacy = PitchContourGeneratorLegacy().to("cuda")
+model_legacy.load_state_dict(torch.load("model_.pt")) 
+model_legacy.eval()
+
 import random
 import os
 import json
@@ -84,7 +91,10 @@ for t in reversed(range(num_timesteps)):
     modified_contour_mel_tensor = sample(model, modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0), input_contour_mel_tensor.unsqueeze(0).unsqueeze(0), t_tensor).detach().squeeze(0).squeeze(0)
     from torch.nn import functional as F
     print(t, F.mse_loss(postprocess(modified_contour_mel_tensor), input_contour_mel_tensor))
-modified_contour_mel = postprocess(modified_contour_mel_tensor).detach().cpu().numpy()
+modified_contour_mel_tensor = postprocess(modified_contour_mel_tensor).detach()
+#for i in range(5):
+#    modified_contour_mel_tensor = postprocess_legacy(model_legacy(preprocess_legacy(modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0)))).detach().squeeze(0).squeeze(0)
+modified_contour_mel = modified_contour_mel_tensor.detach().cpu().numpy()
 modified_contour_mel = modified_contour_mel[extra:]
 modified_contour_mel = modified_contour_mel[padding_size:-padding_size]
 #modified_contour_mel = median_filter(modified_contour_mel, size=17)
@@ -96,3 +106,4 @@ modified_contour = (np.exp(modified_contour_mel / 1127) - 1) * 700
 modified_contour[input_contour < eps] = 0
 #modified_contour = pitch_blur(modified_contour, 1, 1, 1)
 np.save(output_file, modified_contour)
+
