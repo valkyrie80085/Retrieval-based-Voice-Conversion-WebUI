@@ -22,8 +22,9 @@ from scipy.interpolate import CubicSpline
 from configs.config import Config
 from infer.modules.vc.utils import load_hubert
 from f0_magic_gen_diff import PitchContourGenerator, segment_size
-from f0_magic import preprocess_s as preprocess_legacy
+from f0_magic import preprocess_s, preprocess_t
 from f0_magic import postprocess as postprocess_legacy
+from f0_magic import get_itemized_diff
 
 padding_size = 2 * segment_size
 
@@ -727,11 +728,23 @@ def get_contrastive_loss(output, ref):
     return torch.mean(torch.clamp((output_smoothed - ref_smoothed) ** 2 - c_loss_goal, min=0))
 
 
+def adjust_to_match(contour_x, contour_y):
+    contour = contour_x.clone()
+    for i in range(3):
+        delta = get_itemized_diff(contour_y, contour)
+        delta[contour < eps] = 0
+        contour = contour + delta
+    return contour
+
+
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
     from f0_magic_gen_legacy import PitchContourGenerator as PitchContourGeneratorLegacy
-    model_legacy = PitchContourGeneratorLegacy().to("cuda")
-    model_legacy.load_state_dict(torch.load("model_.pt")) 
-    model_legacy.eval()
+    model_s = PitchContourGeneratorLegacy().to("cuda")
+    model_s.load_state_dict(torch.load("model_.pt")) 
+    model_s.eval()
+    model_t = PitchContourGeneratorLegacy().to("cuda")
+    model_t.load_state_dict(torch.load("model t_.pt")) 
+    model_t.eval()
     if train_target_data:
         train_target_data_p = torch.stack(tuple(pitch for pitch, phone_diff in train_target_data))
         train_target_data_d = torch.stack(tuple(phone_diff for pitch, phone_diff in train_target_data))
@@ -813,13 +826,17 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             data_p = data_p[:, offset:data_p.shape[1] - max_offset + offset]
             data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
             data_p = pitch_shift_tensor(data_p, torch.randn(1, device=data_p.device) * 0.5)
-            outputs_legacy = postprocess_legacy(model_legacy(preprocess_legacy(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1).detach()
+            outputs_legacy = data_p.detach().clone()
+            outputs_legacy = postprocess_legacy(model_t(preprocess_t(outputs_legacy.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1).detach()
+            for i in range(random.randint(3, 5)):
+                outputs_legacy = postprocess_legacy(model_s(preprocess_s(outputs_legacy.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1).detach()
 
             inputs, ref = torch.zeros_like(data_p), torch.zeros_like(data_p)
             inputs[labels < eps] = data_p[labels < eps]
             inputs[labels > eps] = outputs_legacy[labels > eps]
             ref[labels < eps] = outputs_legacy[labels < eps]
             ref[labels > eps] = data_p[labels > eps]
+            ref = adjust_to_match(ref, inputs)
 
             t = torch.randint(0, num_timesteps, (data_p.shape[0],), device=device) 
             outputs = postprocess(net_g(preprocess(get_noise(ref, t).unsqueeze(1), data_d.unsqueeze(1), inputs.unsqueeze(1)), t)).squeeze(1)

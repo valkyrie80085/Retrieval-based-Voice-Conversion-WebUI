@@ -189,6 +189,11 @@ def zero_sensative_blur(x):
     return x_blurred
 
 
+def blur(x, size):
+    kernel = gaussian_kernel1d_torch(size)
+    return F.conv1d(x, kernel, padding="same")
+
+
 mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
 std_s = 20
@@ -733,6 +738,26 @@ def get_contrastive_loss_s(output, ref):
     ref_smoothed = ref_smoothed[:, padding_size:-padding_size]
 
     return torch.mean(torch.clamp((output_smoothed - ref_smoothed) ** 2 - c_loss_goal_s, min=0))
+
+
+def get_itemized_diff(output, ref):
+    ref_scale8, output_scale8 = smooth_simple(ref, 8, [output])
+    ref_scale4, output_scale4 = smooth_simple(ref, 4, [output])
+
+    output_scale8 = output_scale8[0]
+    output_scale4 = output_scale4[0]
+
+    mask = (F.pad(torch.abs(ref_scale8[:, 1:] - ref_scale8[:, :-1]), (0, 1)) <= 1.0).float().detach()
+    mask_kernel = gaussian_kernel1d_torch(2)
+    mask_kernel /= mask_kernel.sum()
+    mask = F.conv1d(mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+    ref_smoothed = ref_scale8 * mask + ref_scale4 * (1 - mask)
+    output_smoothed = output_scale8 * mask + output_scale4 * (1 - mask)
+
+    output_smoothed[ref < eps] = output[ref < eps]
+    ref_smoothed[ref < eps] = ref[ref < eps]
+
+    return output_smoothed - ref_smoothed
 
 
 def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
