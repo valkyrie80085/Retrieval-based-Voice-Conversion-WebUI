@@ -830,6 +830,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             outputs_legacy = postprocess_legacy(model_t(preprocess_t(outputs_legacy.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1).detach()
             for i in range(random.randint(3, 5)):
                 outputs_legacy = postprocess_legacy(model_s(preprocess_s(outputs_legacy.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1).detach()
+                outputs_legacy[data_p < eps] = 0
 
             inputs, ref = torch.zeros_like(data_p), torch.zeros_like(data_p)
             inputs[labels < eps] = data_p[labels < eps]
