@@ -806,7 +806,7 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
             t = torch.randint(0, num_timesteps, (data_p.shape[0],), device=device) 
             outputs = postprocess(net_g(preprocess(get_noise(ref, t).unsqueeze(1), data_d.unsqueeze(1), inputs.unsqueeze(1)), t)).squeeze(1)
-            loss = F.mse_loss(outputs[:, padding_size:-padding_size], ref[:, padding_size:-padding_size])
+            loss = F.mse_loss(outputs, ref)
             loss = extract(loss_weight, t, loss.shape) * loss
             loss = loss.mean()
             optimizer_g.zero_grad()
