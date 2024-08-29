@@ -730,7 +730,7 @@ def get_contrastive_loss(output, ref):
 
 def adjust_to_match(contour_x, contour_y):
     contour = contour_x.clone()
-    for i in range(3):
+    for i in range(1):
         delta = get_itemized_diff(contour_y, contour)
         delta[contour < eps] = 0
         contour = contour + delta
