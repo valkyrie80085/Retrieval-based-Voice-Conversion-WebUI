@@ -124,13 +124,15 @@ def smooth_simple(x, size, extras, threshold=1.0, blur_mask=True):
     return x_smoothed, extras_smoothed
 
 
-def smooth(x, threshold=1.0, blur_mask=True):
+def smooth(x, threshold=1.0, aggressive=False, blur_mask=True):
     x_ones = torch.zeros_like(x)
     x_ones[x > eps] = 1
 
     x_scale8, ones_scale8 = smooth_simple(x, 8, [x_ones], threshold=threshold)
-#    x_scale4, ones_scale4 = smooth_simple(x, 4, [x_ones])
-    x_scale4, ones_scale4 = x.clone(), [x_ones.clone()]
+    if aggressive:
+        x_scale4, ones_scale4 = smooth_simple(x, 4, [x_ones])
+    else:
+        x_scale4, ones_scale4 = x.clone(), [x_ones.clone()]
 
     ones_scale8 = ones_scale8[0]
     ones_scale4 = ones_scale4[0]
