@@ -730,7 +730,7 @@ def get_contrastive_loss(output, ref):
 
 def adjust_to_match(contour_x, contour_y):
     contour = contour_x.clone()
-    for i in range(1):
+    for i in range(3):
         delta = get_itemized_diff(contour_y, contour)
         delta[contour < eps] = 0
         contour = contour + delta
@@ -837,7 +837,8 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             inputs[labels > eps] = outputs_legacy[labels > eps]
             ref[labels < eps] = outputs_legacy[labels < eps]
             ref[labels > eps] = data_p[labels > eps]
-            ref = adjust_to_match(ref, inputs)
+            inputs = adjust_to_match(inputs, ref)
+            inputs = inputs + torch.randn_like(inputs) * (5 * torch.rand(1, device=inputs.device))
 
             t = torch.randint(0, num_timesteps, (data_p.shape[0],), device=device) 
             outputs = postprocess(net_g(preprocess(get_noise(ref, t).unsqueeze(1), data_d.unsqueeze(1), inputs.unsqueeze(1)), t)).squeeze(1)
