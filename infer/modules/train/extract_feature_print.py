@@ -29,6 +29,13 @@ sys.path.append(now_dir)
 from infer.lib.audio import load_audio
 from infer.lib.audio import extract_features_new
 
+index_file = None#"D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/logs/ipa/added_IVF521_Flat_nprobe_1_ipa_v2.index" 
+if index_file is not None:
+    import faiss
+    index = faiss.read_index(index_file)
+    # big_npy = np.load(file_big_npy)
+    big_npy = index.reconstruct_n(0, index.ntotal)
+
 if "privateuseone" not in device:
     device = "cpu"
     if torch.cuda.is_available():
@@ -136,7 +143,14 @@ else:
                 audio = load_audio(wav_path, 16000)
                 feats = extract_features_new(audio, audio_shifted, model=model, version=version, device=device)
 
-                feats = feats.squeeze(0).float().cpu().numpy() 
+                feats = feats.squeeze(0).float().cpu().numpy()
+
+                if index_file is not None:
+                    score, ix = index.search(feats, k=8)
+                    weight = np.square(1 / score)
+                    weight /= weight.sum(axis=1, keepdims=True)
+                    feats = np.sum(big_npy[ix] * np.expand_dims(weight, axis=2), axis=1)
+
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)
                     if "(" not in file:
