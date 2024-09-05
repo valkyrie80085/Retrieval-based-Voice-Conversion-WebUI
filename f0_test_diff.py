@@ -34,6 +34,8 @@ with open('f0_test_config.json', 'r') as openfile:
         feature_file = ""
     try:
         starter_file = data["starter_file"]
+        if starter_file == "":
+            starter_file = audio_file
     except:
         starter_file = audio_file
     if feature_file == "":
