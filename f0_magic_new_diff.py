@@ -104,10 +104,13 @@ posterior_mean_coef2 = posterior_mean_coef2.to(device)
 
 mn_p, std_p = 550, 20
 mn_d, std_d = 3.8, 1.7
-def get_noise(x, t):
+def get_noise(x, t, unnormalize=True):
     x_normalized = (x - mn_p) / std_p
     ret_normalized = extract(sqrt_alphas_cumprod, t, x_normalized.shape) * x_normalized + extract(sqrt_one_minus_alphas_cumprod, t, x_normalized.shape) * torch.randn_like(x_normalized)
-    return ret_normalized * std_p + mn_p
+    if unnormalize:
+        return ret_normalized * std_p + mn_p
+    else:
+        return ret_normalized
 
 
 def sample(model, x_t, d, p, t):

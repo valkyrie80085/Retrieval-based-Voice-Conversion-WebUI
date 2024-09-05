@@ -6,7 +6,7 @@ from f0_magic_new_diff import compute_f0_inference, compute_d, resize, pitch_inv
 from f0_magic_new_diff import postprocess, preprocess, padding_size
 from f0_magic_gen_diff import PitchContourGenerator, segment_size
 from f0_magic_new_diff import snap
-from f0_magic_new_diff import num_timesteps, sample
+from f0_magic_new_diff import num_timesteps, sample, get_noise
 
 import random
 import os
@@ -40,6 +40,10 @@ with open('f0_test_config.json', 'r') as openfile:
         snap_sensitivity = None
     if not invert_axis:
         invert_axis = None
+    try:
+        noise_level = int(data["noise_level"])
+    except:
+        noise_level = num_timesteps
 if not model_path.endswith(".pt"):
     model_path += ".pt"
 
@@ -78,8 +82,11 @@ input_phone_diff_tensor = torch.tensor(input_phone_diff_pad, dtype=torch.float32
 #input_contour_mel_tensor += torch.randn_like(input_contour_mel_tensor) * noise_amp
 if snap_sensitivity is not None:
     input_contour_mel_tensor = snap(input_contour_mel_tensor, snap_sensitivity)
-modified_contour_mel_tensor = torch.randn_like(input_contour_mel_tensor)
-for t in reversed(range(num_timesteps)):
+if noise_level < num_timesteps:
+    modified_contour_mel_tensor = get_noise(input_contour_mel_tensor, torch.tensor(noise_level, device=input_contour_mel_tensor.device).reshape(1), unnormalize=False)
+else:
+    modified_contour_mel_tensor = torch.randn_like(input_contour_mel_tensor)
+for t in reversed(range(noise_level)):
     t_tensor = torch.tensor(t, device=modified_contour_mel_tensor.device).reshape(1)
     modified_contour_mel_tensor = sample(model, modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0), input_contour_mel_tensor.unsqueeze(0).unsqueeze(0), t_tensor).detach().squeeze(0).squeeze(0)
     from torch.nn import functional as F
