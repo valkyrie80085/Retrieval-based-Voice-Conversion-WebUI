@@ -24,7 +24,7 @@ from infer.modules.vc.utils import load_hubert
 from f0_magic_gen_diff import PitchContourGenerator, segment_size
 from f0_magic import preprocess_s, preprocess_t
 from f0_magic import postprocess as postprocess_legacy
-from f0_magic import get_itemized_diff
+from f0_magic import get_itemized_diff, get_itemized_diff2
 
 padding_size = 2 * segment_size
 
@@ -734,7 +734,10 @@ def get_contrastive_loss(output, ref):
 def adjust_to_match(contour_x, contour_y):
     contour = contour_x.clone()
     for i in range(3):
-        delta = get_itemized_diff(contour_y, contour)
+        if i == 0:
+            delta = get_itemized_diff2(contour_y, contour)
+        else:
+            delta = get_itemized_diff(contour_y, contour)
         delta[contour < eps] = 0
         contour = contour + delta
     return contour
