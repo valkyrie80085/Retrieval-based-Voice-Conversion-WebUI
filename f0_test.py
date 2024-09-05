@@ -73,13 +73,13 @@ input_contour_mel = 1127 * np.log(1 + input_contour / 700)
 #input_contour_mel = resize_with_zeros(input_contour_mel, length)
 if invert_axis is not None:
     input_contour_mel = pitch_invert_mel(input_contour_mel, invert_axis) 
-modified_contour_mel = pitch_shift_mel(input_contour_mel, pitch_shift)
-modified_contour_mel = np.pad(modified_contour_mel, (padding_size, padding_size))
+input_contour_mel = pitch_shift_mel(input_contour_mel, pitch_shift)
+input_contour_mel = np.pad(input_contour_mel, (padding_size, padding_size))
 input_phone_diff_pad = np.pad(input_phone_diff, (padding_size, padding_size))
-extra = segment_size - ((len(modified_contour_mel) - 1) % segment_size + 1)
-modified_contour_mel = np.pad(modified_contour_mel, (extra, 0))
+extra = segment_size - ((len(input_contour_mel) - 1) % segment_size + 1)
+input_contour_mel = np.pad(input_contour_mel, (extra, 0))
 input_phone_diff_pad = np.pad(input_phone_diff_pad, (extra, 0))
-input_contour_mel_tensor = torch.tensor(modified_contour_mel, dtype=torch.float32, device="cuda")
+input_contour_mel_tensor = torch.tensor(input_contour_mel, dtype=torch.float32, device="cuda")
 input_phone_diff_tensor = torch.tensor(input_phone_diff_pad, dtype=torch.float32, device="cuda")
 #input_contour_mel_tensor += torch.randn_like(input_contour_mel_tensor) * noise_amp
 if snap_sensitivity is not None:
