@@ -42,3 +42,4 @@ ffprobe.*
 f0_test_config.json
 *.log
 test.py
+f0_test_tmp.py
