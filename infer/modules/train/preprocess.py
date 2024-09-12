@@ -26,10 +26,13 @@ from infer.lib.slicer2 import Slicer
 f = open("%s/preprocess.log" % exp_dir, "a+")
 
 SEGMENTATION_VARIATION_COUNT_BASE = int(float(sys.argv[-2]))
-SEGMENTATION_VARIATION_COUNT_EXTRA_PROB = float(sys.argv[-2]) - SEGMENTATION_VARIATION_COUNT_BASE
+SEGMENTATION_VARIATION_COUNT_EXTRA_PROB = (
+    float(sys.argv[-2]) - SEGMENTATION_VARIATION_COUNT_BASE
+)
 
 PITCH_VARIATION_COUNT_BASE = int(float(sys.argv[-1]))
 PITCH_VARIATION_COUNT_EXTRA_PROB = float(sys.argv[-1]) - PITCH_VARIATION_COUNT_BASE
+
 
 def println(strr):
     print(strr)
@@ -83,25 +86,31 @@ class PreProcess:
             tmp_audio2.astype(np.float32),
         )
 
-        pitch_variation_count = PITCH_VARIATION_COUNT_BASE + (np.random.uniform(0, 1) < PITCH_VARIATION_COUNT_EXTRA_PROB)
+        pitch_variation_count = PITCH_VARIATION_COUNT_BASE + (
+            np.random.uniform(0, 1) < PITCH_VARIATION_COUNT_EXTRA_PROB
+        )
         for pitch_variation in range(pitch_variation_count):
             delta = np.random.uniform(0, 1)
             delta_string = str(delta).replace(".", "_")
 
             wavfile.write(
-                "%s/%s_%s_%s_(%s).wav" % (self.gt_wavs_dir, idx0, idx1, idx2, delta_string),
+                "%s/%s_%s_%s_(%s).wav"
+                % (self.gt_wavs_dir, idx0, idx1, idx2, delta_string),
                 self.sr,
                 tmp_audio1.astype(np.float32),
             )
             wavfile.write(
-                "%s/%s_%s_%s_(%s).wav" % (self.wavs16k_dir, idx0, idx1, idx2, delta_string),
+                "%s/%s_%s_%s_(%s).wav"
+                % (self.wavs16k_dir, idx0, idx1, idx2, delta_string),
                 16000,
                 tmp_audio2.astype(np.float32),
             )
 
     def pipeline(self, path, idx0):
         try:
-            segmentation_variation_count = SEGMENTATION_VARIATION_COUNT_BASE + (np.random.uniform(0, 1) < SEGMENTATION_VARIATION_COUNT_EXTRA_PROB)
+            segmentation_variation_count = SEGMENTATION_VARIATION_COUNT_BASE + (
+                np.random.uniform(0, 1) < SEGMENTATION_VARIATION_COUNT_EXTRA_PROB
+            )
             for idx1 in range(segmentation_variation_count):
                 audio = load_audio(path, self.sr)
                 # zero phased digital filter cause pre-ringing noise...
@@ -110,9 +119,10 @@ class PreProcess:
 
                 idx2 = 0
                 import random
-                actual_per = random.uniform(self.per * .75, self.per * 1.5)
+
+                actual_per = random.uniform(self.per * 0.75, self.per * 1.5)
                 actual_overlap = min(self.overlap, actual_per / 2)
-                for audio in [audio]:#self.slicer.slice(audio):
+                for audio in [audio]:  # self.slicer.slice(audio):
                     i = 0
                     while 1:
                         start = int(self.sr * (actual_per - actual_overlap) * i)
@@ -159,6 +169,7 @@ class PreProcess:
 
 def preprocess_trainset(inp_root, sr, n_p, exp_dir, per):
     import os, shutil
+
     for _folder in os.listdir(exp_dir):
         if _folder[0].isdigit():
             folder = os.path.join(exp_dir, _folder)
@@ -171,7 +182,7 @@ def preprocess_trainset(inp_root, sr, n_p, exp_dir, per):
                         elif os.path.isdir(file_path):
                             shutil.rmtree(file_path)
                     except Exception as e:
-                        print('Failed to delete %s. Reason: %s' % (file_path, e))
+                        print("Failed to delete %s. Reason: %s" % (file_path, e))
 
     pp = PreProcess(sr, exp_dir, per)
     println("start preprocess")

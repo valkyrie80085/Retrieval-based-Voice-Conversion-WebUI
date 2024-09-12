@@ -8,7 +8,12 @@ import os
 import librosa
 import ffmpeg
 
-from infer.lib.audio import load_audio, pitch_blur_mel, extract_features_simple, trim_sides_mel
+from infer.lib.audio import (
+    load_audio,
+    pitch_blur_mel,
+    extract_features_simple,
+    trim_sides_mel,
+)
 import torchcrepe
 import random
 
@@ -73,28 +78,48 @@ def gaussian_kernel1d_torch(sigma, width=None):
     if width is None:
         width = round(sigma * 4)
     distance = torch.arange(
-            -width, width + 1, dtype=torch.float32, device=torch.device("cuda" if torch.cuda.is_available() else "cpu") 
-            ).detach()
-    gaussian = torch.exp(
-            -(distance ** 2) / (2 * sigma ** 2)
-            )
+        -width,
+        width + 1,
+        dtype=torch.float32,
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    ).detach()
+    gaussian = torch.exp(-(distance**2) / (2 * sigma**2))
     gaussian /= gaussian.sum()
     kernel = gaussian[None, None]
     return kernel
 
 
 def get_masks(left, right, mid, threshold=1.0, blur_mask=True):
-    mid_mask = (F.pad(torch.abs(mid[:, 1:] - mid[:, :-1]), (0, 1)) <= threshold).float().detach()
-    left_mask = (F.pad(torch.abs(left[:, 1:] - left[:, :-1]), (0, 1)) <= threshold).float().detach()
+    mid_mask = (
+        (F.pad(torch.abs(mid[:, 1:] - mid[:, :-1]), (0, 1)) <= threshold)
+        .float()
+        .detach()
+    )
+    left_mask = (
+        (F.pad(torch.abs(left[:, 1:] - left[:, :-1]), (0, 1)) <= threshold)
+        .float()
+        .detach()
+    )
     left_mask[mid_mask > eps] = 0
-    right_mask = (F.pad(torch.abs(right[:, 1:] - right[:, :-1]), (0, 1)) <= threshold).float().detach()
+    right_mask = (
+        (F.pad(torch.abs(right[:, 1:] - right[:, :-1]), (0, 1)) <= threshold)
+        .float()
+        .detach()
+    )
     right_mask[mid_mask > eps] = 0
     if blur_mask:
         mask_kernel = gaussian_kernel1d_torch(2)
         mask_kernel /= mask_kernel.sum()
-        mid_mask = F.conv1d(mid_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1) + eps
-        left_mask = F.conv1d(left_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
-        right_mask = F.conv1d(right_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+        mid_mask = (
+            F.conv1d(mid_mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
+            + eps
+        )
+        left_mask = F.conv1d(
+            left_mask.unsqueeze(1), mask_kernel, padding="same"
+        ).squeeze(1)
+        right_mask = F.conv1d(
+            right_mask.unsqueeze(1), mask_kernel, padding="same"
+        ).squeeze(1)
     return left_mask, right_mask, mid_mask
 
 
@@ -102,23 +127,42 @@ def smooth_simple(x, size, extras, threshold=1.0, blur_mask=True):
     kernel = gaussian_kernel1d_torch(size)
 
     mid = F.conv1d(x.unsqueeze(1), kernel, padding="same").squeeze(1)
-    mid_extras = [F.conv1d(extra.unsqueeze(1), kernel, padding="same").squeeze(1) for extra in extras]
+    mid_extras = [
+        F.conv1d(extra.unsqueeze(1), kernel, padding="same").squeeze(1)
+        for extra in extras
+    ]
 
     left_kernel = kernel.clone()
-    left_kernel[:, :, :left_kernel.shape[2] // 2] = 0
+    left_kernel[:, :, : left_kernel.shape[2] // 2] = 0
     left_kernel /= left_kernel.sum()
     right_kernel = kernel.clone()
-    right_kernel[:, :, right_kernel.shape[2] // 2 + 1:] = 0
+    right_kernel[:, :, right_kernel.shape[2] // 2 + 1 :] = 0
     right_kernel /= right_kernel.sum()
 
     left = F.conv1d(x.unsqueeze(1), left_kernel, padding="same").squeeze(1)
-    left_extras = [F.conv1d(extra.unsqueeze(1), left_kernel, padding="same").squeeze(1) for extra in extras]
+    left_extras = [
+        F.conv1d(extra.unsqueeze(1), left_kernel, padding="same").squeeze(1)
+        for extra in extras
+    ]
     right = F.conv1d(x.unsqueeze(1), right_kernel, padding="same").squeeze(1)
-    right_extras = [F.conv1d(extra.unsqueeze(1), right_kernel, padding="same").squeeze(1) for extra in extras]
+    right_extras = [
+        F.conv1d(extra.unsqueeze(1), right_kernel, padding="same").squeeze(1)
+        for extra in extras
+    ]
 
-    left_mask, right_mask, mid_mask = get_masks(left, right, mid, threshold=threshold, blur_mask=blur_mask)
-    x_smoothed = (left_mask * left + right_mask * right + mid_mask * mid) / (left_mask + right_mask + mid_mask)
-    extras_smoothed = [(left_mask * left_extra + right_mask * right_extra + mid_mask * mid_extra) / (left_mask + right_mask + mid_mask) for (left_extra, right_extra, mid_extra) in zip(left_extras, right_extras, mid_extras)]
+    left_mask, right_mask, mid_mask = get_masks(
+        left, right, mid, threshold=threshold, blur_mask=blur_mask
+    )
+    x_smoothed = (left_mask * left + right_mask * right + mid_mask * mid) / (
+        left_mask + right_mask + mid_mask
+    )
+    extras_smoothed = [
+        (left_mask * left_extra + right_mask * right_extra + mid_mask * mid_extra)
+        / (left_mask + right_mask + mid_mask)
+        for (left_extra, right_extra, mid_extra) in zip(
+            left_extras, right_extras, mid_extras
+        )
+    ]
     return x_smoothed, extras_smoothed
 
 
@@ -127,23 +171,37 @@ def smooth(x, threshold=1.0, blur_mask=True):
     x_ones[x > eps] = 1
 
     x_scale8, ones_scale8 = smooth_simple(x, 8, [x_ones], threshold=threshold)
-#    x_scale4, ones_scale4 = smooth_simple(x, 4, [x_ones])
+    #    x_scale4, ones_scale4 = smooth_simple(x, 4, [x_ones])
     x_scale4, ones_scale4 = x.clone(), [x_ones.clone()]
 
     ones_scale8 = ones_scale8[0]
     ones_scale4 = ones_scale4[0]
 
     window_size = 12
-    x_max, x_min = x_scale8[:, :-window_size].clone(), x_scale8[:, :-window_size].clone()
+    x_max, x_min = (
+        x_scale8[:, :-window_size].clone(),
+        x_scale8[:, :-window_size].clone(),
+    )
     for i in range(window_size):
-        x_max = torch.maximum(x_max, x_scale8[:, window_size - i:x_scale8.shape[1] - i])
-        x_min = torch.minimum(x_min, x_scale8[:, window_size - i:x_scale8.shape[1] - i])
+        x_max = torch.maximum(
+            x_max, x_scale8[:, window_size - i : x_scale8.shape[1] - i]
+        )
+        x_min = torch.minimum(
+            x_min, x_scale8[:, window_size - i : x_scale8.shape[1] - i]
+        )
     x_max_hz = (torch.exp(x_max / 1127) - 1) * 700
     x_min_hz = (torch.exp(x_min / 1127) - 1) * 700
     x_diff = torch.log2(x_max_hz) - torch.log2(x_min_hz)
     threshold_diff = 1 / 25
 
-    mask = torch.logical_or(F.pad(x_diff, (0, window_size)) <= threshold_diff, F.pad(x_diff, (window_size, 0)) <= threshold_diff).float().detach()
+    mask = (
+        torch.logical_or(
+            F.pad(x_diff, (0, window_size)) <= threshold_diff,
+            F.pad(x_diff, (window_size, 0)) <= threshold_diff,
+        )
+        .float()
+        .detach()
+    )
     if blur_mask:
         mask_kernel = gaussian_kernel1d_torch(2)
         mask_kernel /= mask_kernel.sum()
@@ -160,7 +218,18 @@ def snap_helper(x, sensitivity):
     x_semitone = torch.log2(x / 440) * 12
     x_semitone_rounded = torch.floor(x_semitone)
     x_semitone_remainder = x_semitone - x_semitone_rounded
-    x_semitone_remainder_snapped = torch.sin(torch.clamp(x_semitone_remainder - 0.5, -(1 - sensitivity) / 2, (1 - sensitivity) / 2) * (math.pi / (1 - sensitivity))) / 2 + 0.5
+    x_semitone_remainder_snapped = (
+        torch.sin(
+            torch.clamp(
+                x_semitone_remainder - 0.5,
+                -(1 - sensitivity) / 2,
+                (1 - sensitivity) / 2,
+            )
+            * (math.pi / (1 - sensitivity))
+        )
+        / 2
+        + 0.5
+    )
     x_semitone_snapped = x_semitone_rounded + x_semitone_remainder_snapped
     x_snapped = torch.pow(2, x_semitone_snapped / 12) * 440
     x_snapped[x < eps] = 0
@@ -171,7 +240,7 @@ def snap(x, sensitivity):
     x = smooth(x.unsqueeze(0)).squeeze(0)
     x_hz = (torch.exp(x / 1127) - 1) * 700
     x_snapped_hz = snap_helper(x_hz, sensitivity)
-    x_snapped = 1127 * torch.log(1 + x_snapped_hz / 700) 
+    x_snapped = 1127 * torch.log(1 + x_snapped_hz / 700)
     x_snapped[x < eps] = 0
     return x_snapped
 
@@ -190,6 +259,8 @@ def zero_sensative_blur(x):
 mn_p, std_p = 550, 120
 mn_d, std_d = 3.8, 1.7
 std_s = 20
+
+
 def preprocess(x, y):
     x_ret = (x - mn_p) / std_p
     y_ret = (y - mn_d) / std_d
@@ -214,53 +285,60 @@ def postprocess(x):
     x_ret = x.clone()
     x_ret = x * std_p + mn_p
     x_ret[x_ret < mel_min * 0.5] = 0
-#    x_ret[x < eps] = (2 * mel_min - mel_max - mn_p) / std_p
+    #    x_ret[x < eps] = (2 * mel_min - mel_max - mn_p) / std_p
     return x_ret
 
 
 sr = 16000
 window_length = 160
 frames_per_sec = sr // window_length
+
+
 def resize_with_zeros(contour, target_len):
     a = contour.copy()
     a[a < eps] = np.nan
     a = np.interp(
-            np.arange(0, len(a) * target_len, len(a)) / target_len,
-            np.arange(0, len(a)),
-            a
-            )
+        np.arange(0, len(a) * target_len, len(a)) / target_len, np.arange(0, len(a)), a
+    )
     a = np.nan_to_num(a)
     return a
 
 
 def resize(a, target_len):
     return np.interp(
-            np.arange(0, len(a) * target_len, len(a)) / target_len,
-            np.arange(0, len(a)),
-            a
-            )
+        np.arange(0, len(a) * target_len, len(a)) / target_len, np.arange(0, len(a)), a
+    )
 
 
 hubert_model = None
+
+
 def trim_f0(f0, audio, index_file, version="v2"):
     global hubert_model
 
     if not os.path.isfile(index_file):
         return f0
     import faiss
+
     try:
         index = faiss.read_index(index_file)
         # big_npy = np.load(file_big_npy)
         big_npy = index.reconstruct_n(0, index.ntotal)
     except:
-        print("Failed to read index file: \"{index_file:s}\"")
+        print('Failed to read index file: "{index_file:s}"')
         return f0
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if hubert_model is None:
         hubert_model = load_hubert(config)
 
-    feats = extract_features_simple(audio, model=hubert_model, version=version, device=device, is_half=config.is_half)
+    feats = extract_features_simple(
+        audio,
+        model=hubert_model,
+        version=version,
+        device=device,
+        is_half=config.is_half,
+    )
     npy = feats[0].cpu().numpy()
     npy = np.concatenate((npy, np.full((npy.shape[0], 1), 0.5)), axis=1)
 
@@ -271,10 +349,8 @@ def trim_f0(f0, audio, index_file, version="v2"):
 
     pd = npy[:, -1]
     pd = np.interp(
-            np.arange(0, len(pd) * len(f0), len(pd)) / len(f0),
-            np.arange(0, len(pd)),
-            pd
-            )
+        np.arange(0, len(pd) * len(f0), len(pd)) / len(f0), np.arange(0, len(pd)), pd
+    )
 
     threshold = 0.5
     for it in (range(len(f0)), reversed(range(len(f0)))):
@@ -292,26 +368,28 @@ def trim_f0(f0, audio, index_file, version="v2"):
 
 
 model_rmvpe = None
+
+
 def compute_f0_inference(path, index_file=""):
     print("computing f0 for: " + path)
     x = load_audio(path, 44100)
-    x = librosa.resample(
-            x, orig_sr=44100, target_sr=sr
-            )
+    x = librosa.resample(x, orig_sr=44100, target_sr=sr)
 
     global model_rmvpe
     if model_rmvpe is None:
         from infer.lib.rmvpe import RMVPE
+
         print("Loading rmvpe model")
-        model_rmvpe = RMVPE(
-                "assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
+        model_rmvpe = RMVPE("assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
     f0 = model_rmvpe.infer_from_audio(x, thred=0.03)
 
     # Pick a batch size that doesn't cause memory errors on your gpu
     torch_device_index = 0
     torch_device = None
     if torch.cuda.is_available():
-        torch_device = torch.device(f"cuda:{torch_device_index % torch.cuda.device_count()}")
+        torch_device = torch.device(
+            f"cuda:{torch_device_index % torch.cuda.device_count()}"
+        )
     elif torch.backends.mps.is_available():
         torch_device = torch.device("mps")
     else:
@@ -321,21 +399,21 @@ def compute_f0_inference(path, index_file=""):
     # Compute pitch using first gpu
     audio_tensor = torch.tensor(np.copy(x))[None].float()
     f0_crepe, pd = torchcrepe.predict(
-            audio_tensor,
-            16000,
-            160,
-            50,
-            1100,
-            model,
-            batch_size=batch_size,
-            device=torch_device,
-            return_periodicity=True,
-            )
+        audio_tensor,
+        16000,
+        160,
+        50,
+        1100,
+        model,
+        batch_size=batch_size,
+        device=torch_device,
+        return_periodicity=True,
+    )
     pd = torchcrepe.filter.median(pd, 3)
     f0_crepe = torchcrepe.filter.mean(f0_crepe, 3)
     f0_crepe[pd < 0.1] = 0
     f0_crepe = f0_crepe[0].cpu().numpy()
-    f0_crepe = f0_crepe[1:] # Get rid of extra first frame
+    f0_crepe = f0_crepe[1:]  # Get rid of extra first frame
 
     # Resize the pitch
     target_len = f0.shape[0]
@@ -343,7 +421,11 @@ def compute_f0_inference(path, index_file=""):
 
     f0_rmvpe_mel = np.log(1 + f0 / 700)
     f0_crepe_mel = np.log(1 + f0_crepe / 700)
-    f0 = np.where(np.logical_and(f0_rmvpe_mel > eps, f0_crepe_mel - f0_rmvpe_mel > 0.05), f0_crepe, f0)
+    f0 = np.where(
+        np.logical_and(f0_rmvpe_mel > eps, f0_crepe_mel - f0_rmvpe_mel > 0.05),
+        f0_crepe,
+        f0,
+    )
 
     f0_mel = 1127 * np.log(1 + f0 / 700)
 
@@ -354,7 +436,7 @@ def compute_f0_inference(path, index_file=""):
 
     f0_mel = trim_sides_mel(f0_mel, frames_per_sec)
 
-    f0 = (np.exp(f0_mel / 1127) - 1) * 700 
+    f0 = (np.exp(f0_mel / 1127) - 1) * 700
     f0 = np.pad(f0, (300, 300))
     return f0
 
@@ -362,23 +444,23 @@ def compute_f0_inference(path, index_file=""):
 def compute_f0(path):
     print("computing f0 for: " + path)
     x = load_audio(path, 44100)
-    x = librosa.resample(
-            x, orig_sr=44100, target_sr=sr
-            )
+    x = librosa.resample(x, orig_sr=44100, target_sr=sr)
 
     global model_rmvpe
     if model_rmvpe is None:
         from infer.lib.rmvpe import RMVPE
+
         print("Loading rmvpe model")
-        model_rmvpe = RMVPE(
-                "assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
+        model_rmvpe = RMVPE("assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
     f0 = model_rmvpe.infer_from_audio(x, thred=0.03)
 
     # Pick a batch size that doesn't cause memory errors on your gpu
     torch_device_index = 0
     torch_device = None
     if torch.cuda.is_available():
-        torch_device = torch.device(f"cuda:{torch_device_index % torch.cuda.device_count()}")
+        torch_device = torch.device(
+            f"cuda:{torch_device_index % torch.cuda.device_count()}"
+        )
     elif torch.backends.mps.is_available():
         torch_device = torch.device("mps")
     else:
@@ -388,21 +470,21 @@ def compute_f0(path):
     # Compute pitch using first gpu
     audio_tensor = torch.tensor(np.copy(x))[None].float()
     f0_crepe, pd = torchcrepe.predict(
-            audio_tensor,
-            16000,
-            160,
-            50,
-            1100,
-            model,
-            batch_size=batch_size,
-            device=torch_device,
-            return_periodicity=True,
-            )
+        audio_tensor,
+        16000,
+        160,
+        50,
+        1100,
+        model,
+        batch_size=batch_size,
+        device=torch_device,
+        return_periodicity=True,
+    )
     pd = torchcrepe.filter.median(pd, 3)
     f0_crepe = torchcrepe.filter.mean(f0_crepe, 3)
     f0_crepe[pd < 0.1] = 0
     f0_crepe = f0_crepe[0].cpu().numpy()
-    f0_crepe = f0_crepe[1:] # Get rid of extra first frame
+    f0_crepe = f0_crepe[1:]  # Get rid of extra first frame
 
     # Resize the pitch
     target_len = f0.shape[0]
@@ -410,7 +492,11 @@ def compute_f0(path):
 
     f0_rmvpe_mel = np.log(1 + f0 / 700)
     f0_crepe_mel = np.log(1 + f0_crepe / 700)
-    f0 = np.where(np.logical_and(f0_rmvpe_mel > eps, f0_crepe_mel - f0_rmvpe_mel > 0.05), f0_crepe, f0)
+    f0 = np.where(
+        np.logical_and(f0_rmvpe_mel > eps, f0_crepe_mel - f0_rmvpe_mel > 0.05),
+        f0_crepe,
+        f0,
+    )
 
     f0_mel = 1127 * np.log(1 + f0 / 700)
 
@@ -419,12 +505,18 @@ def compute_f0(path):
     return f0_mel
 
 
-
 TARGET_PATH = "C:/datasets/singing_ai/f0_magic/target"
 OTHERS_PATH = "C:/datasets/singing_ai/f0_magic/others"
 
+
 def walk(path):
-    return sum(([os.path.join(dirpath, file_name) for file_name in filenames] for (dirpath, dirnames, filenames) in os.walk(path)), [])
+    return sum(
+        (
+            [os.path.join(dirpath, file_name) for file_name in filenames]
+            for (dirpath, dirnames, filenames) in os.walk(path)
+        ),
+        [],
+    )
 
 
 def compute_d(path):
@@ -435,11 +527,11 @@ def compute_d(path):
         hubert_model = load_hubert(config)
 
     audio = load_audio(path, 44100)
-    audio = librosa.resample(
-            audio, orig_sr=44100, target_sr=16000
-            )
+    audio = librosa.resample(audio, orig_sr=44100, target_sr=16000)
 
-    feats = extract_features_simple(audio, model=hubert_model, version="v2", device="cuda", is_half=config.is_half)
+    feats = extract_features_simple(
+        audio, model=hubert_model, version="v2", device="cuda", is_half=config.is_half
+    )
     npy = feats[0].cpu().numpy()
 
     feats_diff = np.pad(np.linalg.norm(npy[:-1] - npy[1:], axis=1), (1, 0))
@@ -449,7 +541,7 @@ def compute_d(path):
 def prepare_data():
     filenames = []
     for filename in walk(TARGET_PATH):
-        if filename.endswith(".wav"): 
+        if filename.endswith(".wav"):
             filenames.append(filename)
     for filename in walk(OTHERS_PATH):
         if filename.endswith(".wav"):
@@ -471,7 +563,7 @@ def prepare_data():
 
 
 def pitch_shift_mel(contour, semitones):
-    contour_shifted = (np.exp(contour / 1127) - 1)
+    contour_shifted = np.exp(contour / 1127) - 1
     contour_shifted *= 2 ** (semitones / 12)
     contour_shifted = 1127 * np.log(1 + contour_shifted)
     contour_shifted[contour < eps] = 0
@@ -479,7 +571,7 @@ def pitch_shift_mel(contour, semitones):
 
 
 def pitch_shift_tensor(contour, semitones):
-    contour_shifted = (torch.exp(contour / 1127) - 1)
+    contour_shifted = torch.exp(contour / 1127) - 1
     contour_shifted *= 2 ** (semitones / 12)
     contour_shifted = 1127 * torch.log(1 + contour_shifted)
     contour_shifted[contour < eps] = 0
@@ -488,7 +580,9 @@ def pitch_shift_tensor(contour, semitones):
 
 def pitch_invert_mel(contour, note):
     contour_inverted = (np.exp(contour / 1127) - 1) * 700
-    contour_inverted[contour_inverted > 0] = (librosa.note_to_hz(note) ** 2) / contour_inverted[contour_inverted > 0]
+    contour_inverted[contour_inverted > 0] = (
+        librosa.note_to_hz(note) ** 2
+    ) / contour_inverted[contour_inverted > 0]
     contour_inverted = 1127 * np.log(1 + contour_inverted / 700)
     contour_inverted[contour < eps] = 0
     return contour_inverted
@@ -499,7 +593,9 @@ def add_noise(contour, amp=5, scale=1):
     length = int(contour.shape[0] / scale) + 1
     noise = np.random.normal(0, amp, length)
     if len(noise) != len(contour):
-        noise = CubicSpline(np.arange(0, len(noise)), noise)(np.arange(0, len(noise) * len(contour), len(noise)) / len(contour))
+        noise = CubicSpline(np.arange(0, len(noise)), noise)(
+            np.arange(0, len(noise) * len(contour), len(noise)) / len(contour)
+        )
     contour_with_noise = contour + noise
     contour_with_noise[zeros] = 0
     return contour_with_noise
@@ -521,6 +617,7 @@ def change_vibrato(contour, factor):
 
 def modify_ends(contour):
     from scipy.ndimage import gaussian_filter1d
+
     contour_pad = np.concatenate(([0], contour))
     contour_segments = np.split(contour_pad, np.where(contour_pad < eps)[0])
     border_length = random.randint(4, 24)
@@ -537,7 +634,7 @@ def modify_ends(contour):
         if segment.shape[0] > 0:
             if len(segment) > border_length:
                 if t == 0:
-                    segment[1:border_length + 1] += mask
+                    segment[1 : border_length + 1] += mask
                 else:
                     segment[-border_length:] += mask
             modified_segments.append(segment)
@@ -567,7 +664,6 @@ def load_data():
                 segments_phone_diff.append(segment_phone_diff)
         return np.concatenate(segments), np.concatenate(segments_phone_diff)
 
-
     prepare_data()
     train_target_data = []
     train_others_data = []
@@ -575,12 +671,12 @@ def load_data():
     test_others_data = []
     test_set = set()
     for filename in walk(TARGET_PATH) + walk(OTHERS_PATH):
-        if filename.endswith(".wav"): 
+        if filename.endswith(".wav"):
             if random.uniform(0, 1) < 0.2:
                 test_set.add(filename)
     target_averages = []
     for filename in walk(TARGET_PATH):
-        if filename.endswith(".wav"): 
+        if filename.endswith(".wav"):
             if filename in test_set:
                 target_data, others_data = test_target_data, test_others_data
             else:
@@ -592,20 +688,55 @@ def load_data():
             for repetition in range(multiplicity_target):
                 contour, phone_diff = retime_gaps(contour_, phone_diff_)
                 if contour.shape[0] < segment_size:
-                    phone_diff = np.pad(phone_diff, (0, segment_size - contour.shape[0]))
+                    phone_diff = np.pad(
+                        phone_diff, (0, segment_size - contour.shape[0])
+                    )
                     contour = np.pad(contour, (0, segment_size - contour.shape[0]))
                 contour = np.pad(contour, (padding_size + max_offset, padding_size))
-                phone_diff = np.pad(phone_diff, (padding_size + max_offset, padding_size))
-                for i in range(round((contour.shape[0] - max_offset - 2 * padding_size) / segment_size) + 1):
-                    start = random.randint(padding_size + max_offset, contour.shape[0] - padding_size - segment_size)
-                    contour_sliced = contour[start - padding_size - max_offset:start + padding_size + segment_size].copy()
-                    phone_diff_sliced = phone_diff[start - padding_size - max_offset:start + padding_size + segment_size].copy()
-                    if np.sum(contour_sliced[padding_size:-padding_size] > eps) > segment_size * min_ratio:
-                        average = get_average(contour_sliced[contour_sliced > eps]) / 1127
+                phone_diff = np.pad(
+                    phone_diff, (padding_size + max_offset, padding_size)
+                )
+                for i in range(
+                    round(
+                        (contour.shape[0] - max_offset - 2 * padding_size)
+                        / segment_size
+                    )
+                    + 1
+                ):
+                    start = random.randint(
+                        padding_size + max_offset,
+                        contour.shape[0] - padding_size - segment_size,
+                    )
+                    contour_sliced = contour[
+                        start
+                        - padding_size
+                        - max_offset : start
+                        + padding_size
+                        + segment_size
+                    ].copy()
+                    phone_diff_sliced = phone_diff[
+                        start
+                        - padding_size
+                        - max_offset : start
+                        + padding_size
+                        + segment_size
+                    ].copy()
+                    if (
+                        np.sum(contour_sliced[padding_size:-padding_size] > eps)
+                        > segment_size * min_ratio
+                    ):
+                        average = (
+                            get_average(contour_sliced[contour_sliced > eps]) / 1127
+                        )
                         target_averages.append(average)
                         contour_final = contour_sliced
                         phone_diff_final = phone_diff_sliced
-                        target_data.append((torch.tensor(contour_final, dtype=torch.float32), torch.tensor(phone_diff_final, dtype=torch.float32)))
+                        target_data.append(
+                            (
+                                torch.tensor(contour_final, dtype=torch.float32),
+                                torch.tensor(phone_diff_final, dtype=torch.float32),
+                            )
+                        )
 
     if multiplicity_others > 0:
         for filename in walk(OTHERS_PATH):
@@ -621,28 +752,64 @@ def load_data():
                 for repetition in range(multiplicity_others):
                     contour, phone_diff = retime_gaps(contour_, phone_diff_)
                     if contour.shape[0] < segment_size:
-                        phone_diff = np.pad(phone_diff, (0, segment_size - contour.shape[0]))
+                        phone_diff = np.pad(
+                            phone_diff, (0, segment_size - contour.shape[0])
+                        )
                         contour = np.pad(contour, (0, segment_size - contour.shape[0]))
                     contour = np.pad(contour, (padding_size + max_offset, padding_size))
-                    phone_diff = np.pad(phone_diff, (padding_size + max_offset, padding_size))
-                    for i in range(round((contour.shape[0] - max_offset - 2 * padding_size) / segment_size)):
-                        start = random.randint(padding_size + max_offset, contour.shape[0] - padding_size - segment_size)
-                        use_original = False#random.randint(0, 4) == 0
-                        contour_sliced = contour[start - padding_size - max_offset:start + padding_size + segment_size].copy()
-                        phone_diff_sliced = phone_diff[start - padding_size - max_offset:start + padding_size + segment_size].copy()
-                        if np.sum(contour_sliced[padding_size:-padding_size] > eps) > segment_size * min_ratio:
+                    phone_diff = np.pad(
+                        phone_diff, (padding_size + max_offset, padding_size)
+                    )
+                    for i in range(
+                        round(
+                            (contour.shape[0] - max_offset - 2 * padding_size)
+                            / segment_size
+                        )
+                    ):
+                        start = random.randint(
+                            padding_size + max_offset,
+                            contour.shape[0] - padding_size - segment_size,
+                        )
+                        use_original = False  # random.randint(0, 4) == 0
+                        contour_sliced = contour[
+                            start
+                            - padding_size
+                            - max_offset : start
+                            + padding_size
+                            + segment_size
+                        ].copy()
+                        phone_diff_sliced = phone_diff[
+                            start
+                            - padding_size
+                            - max_offset : start
+                            + padding_size
+                            + segment_size
+                        ].copy()
+                        if (
+                            np.sum(contour_sliced[padding_size:-padding_size] > eps)
+                            > segment_size * min_ratio
+                        ):
                             if use_original:
                                 shift_real = 0
                             else:
-                                average = get_average(contour_sliced[contour_sliced > eps]) / 1127
+                                average = (
+                                    get_average(contour_sliced[contour_sliced > eps])
+                                    / 1127
+                                )
                                 average_goal = random.choice(target_averages)
                                 average = (math.exp(average) - 1) * 700
                                 average_goal = (math.exp(average_goal) - 1) * 700
-                                shift_real = math.log(average_goal / average) / math.log(2) * 12
+                                shift_real = (
+                                    math.log(average_goal / average) / math.log(2) * 12
+                                )
                             contour_final = pitch_shift_mel(contour_sliced, shift_real)
                             phone_diff_final = phone_diff_sliced
-                            others_data.append((torch.tensor(contour_final, dtype=torch.float32), torch.tensor(phone_diff_final, dtype=torch.float32)))
-
+                            others_data.append(
+                                (
+                                    torch.tensor(contour_final, dtype=torch.float32),
+                                    torch.tensor(phone_diff_final, dtype=torch.float32),
+                                )
+                            )
 
     print("Train target data count:", len(train_target_data))
     print("Train others data count:", len(train_others_data))
@@ -652,7 +819,15 @@ def load_data():
 
 
 def median_filter1d_torch(x, size):
-    return torch.median(torch.cat(tuple(x[:, i:x.shape[1] - size + i + 1].unsqueeze(2) for i in range(size)), dim=2), dim=2).values
+    return torch.median(
+        torch.cat(
+            tuple(
+                x[:, i : x.shape[1] - size + i + 1].unsqueeze(2) for i in range(size)
+            ),
+            dim=2,
+        ),
+        dim=2,
+    ).values
 
 
 def get_contrastive_loss(output, ref):
@@ -662,7 +837,11 @@ def get_contrastive_loss(output, ref):
     output_scale8 = output_scale8[0]
     output_scale4 = output_scale4[0]
 
-    mask = (F.pad(torch.abs(ref_scale8[:, 1:] - ref_scale8[:, :-1]), (0, 1)) <= 1.0).float().detach()
+    mask = (
+        (F.pad(torch.abs(ref_scale8[:, 1:] - ref_scale8[:, :-1]), (0, 1)) <= 1.0)
+        .float()
+        .detach()
+    )
     mask_kernel = gaussian_kernel1d_torch(2)
     mask_kernel /= mask_kernel.sum()
     mask = F.conv1d(mask.unsqueeze(1), mask_kernel, padding="same").squeeze(1)
@@ -674,26 +853,47 @@ def get_contrastive_loss(output, ref):
     output_smoothed = output_smoothed[:, padding_size:-padding_size]
     ref_smoothed = ref_smoothed[:, padding_size:-padding_size]
 
-    return torch.mean(torch.clamp((output_smoothed - ref_smoothed) ** 2 - c_loss_goal, min=0))
+    return torch.mean(
+        torch.clamp((output_smoothed - ref_smoothed) ** 2 - c_loss_goal, min=0)
+    )
 
 
-def train_model(name, train_target_data, train_others_data, test_target_data, test_others_data):
+def train_model(
+    name, train_target_data, train_others_data, test_target_data, test_others_data
+):
     from f0_magic_gen_legacy import PitchContourGenerator as PitchContourGeneratorLegacy
+
     model_legacy = PitchContourGeneratorLegacy().to("cuda")
-    model_legacy.load_state_dict(torch.load("model_.pt")) 
+    model_legacy.load_state_dict(torch.load("model_.pt"))
     model_legacy.eval()
     if train_target_data:
-        train_target_data_p = torch.stack(tuple(pitch for pitch, phone_diff in train_target_data))
-        train_target_data_d = torch.stack(tuple(phone_diff for pitch, phone_diff in train_target_data))
+        train_target_data_p = torch.stack(
+            tuple(pitch for pitch, phone_diff in train_target_data)
+        )
+        train_target_data_d = torch.stack(
+            tuple(phone_diff for pitch, phone_diff in train_target_data)
+        )
     if train_others_data:
-        train_others_data_p = torch.stack(tuple(pitch for pitch, phone_diff in train_others_data))
-        train_others_data_d = torch.stack(tuple(phone_diff for pitch, phone_diff in train_others_data))
+        train_others_data_p = torch.stack(
+            tuple(pitch for pitch, phone_diff in train_others_data)
+        )
+        train_others_data_d = torch.stack(
+            tuple(phone_diff for pitch, phone_diff in train_others_data)
+        )
     if test_target_data:
-        test_target_data_p = torch.stack(tuple(pitch for pitch, phone_diff in test_target_data))
-        test_target_data_d = torch.stack(tuple(phone_diff for pitch, phone_diff in test_target_data))
+        test_target_data_p = torch.stack(
+            tuple(pitch for pitch, phone_diff in test_target_data)
+        )
+        test_target_data_d = torch.stack(
+            tuple(phone_diff for pitch, phone_diff in test_target_data)
+        )
     if test_others_data:
-        test_others_data_p = torch.stack(tuple(pitch for pitch, phone_diff in test_others_data))
-        test_others_data_d = torch.stack(tuple(phone_diff for pitch, phone_diff in test_others_data))
+        test_others_data_p = torch.stack(
+            tuple(pitch for pitch, phone_diff in test_others_data)
+        )
+        test_others_data_d = torch.stack(
+            tuple(phone_diff for pitch, phone_diff in test_others_data)
+        )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     net_g = PitchContourGenerator().to(device)
     net_d = PitchContourDiscriminator(3).to(device)
@@ -712,15 +912,15 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
     try:
         if os.path.isfile(CHECKPOINT_FILE):
             checkpoint = torch.load(CHECKPOINT_FILE)
-            epoch = checkpoint['epoch']
-            net_g.load_state_dict(checkpoint['net_g'])
-            net_d.load_state_dict(checkpoint['net_d'])
-            optimizer_g.load_state_dict(checkpoint['optimizer_g'])
-            optimizer_d.load_state_dict(checkpoint['optimizer_d'])
+            epoch = checkpoint["epoch"]
+            net_g.load_state_dict(checkpoint["net_g"])
+            net_d.load_state_dict(checkpoint["net_d"])
+            optimizer_g.load_state_dict(checkpoint["optimizer_g"])
+            optimizer_d.load_state_dict(checkpoint["optimizer_d"])
             for g in optimizer_g.param_groups:
-                g['lr'] = lr_g
+                g["lr"] = lr_g
             for g in optimizer_d.param_groups:
-                g['lr'] = lr_d
+                g["lr"] = lr_d
             print(f"Data loaded from '{CHECKPOINT_FILE:s}'")
         else:
             print("Model initialized with random weights")
@@ -732,48 +932,93 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         optimizer_d = optim.AdamW(net_d.parameters(), lr=lr_d)
         print("Model initialized with random weights")
 
-    train_dataset = torch.utils.data.TensorDataset(train_target_data_p, train_target_data_d, torch.ones((len(train_target_data),)))
+    train_dataset = torch.utils.data.TensorDataset(
+        train_target_data_p, train_target_data_d, torch.ones((len(train_target_data),))
+    )
     num1s = len(train_target_data)
     if train_others_data:
-        train_dataset += torch.utils.data.TensorDataset(train_others_data_p, train_others_data_d, torch.zeros((len(train_others_data),)))
+        train_dataset += torch.utils.data.TensorDataset(
+            train_others_data_p,
+            train_others_data_d,
+            torch.zeros((len(train_others_data),)),
+        )
         num0s = len(train_others_data)
     else:
         num0s = 0
     if USE_TEST_SET:
-        test_dataset = torch.utils.data.TensorDataset(test_target_data_p, test_target_data_d, torch.ones((len(test_target_data),)))
+        test_dataset = torch.utils.data.TensorDataset(
+            test_target_data_p, test_target_data_d, torch.ones((len(test_target_data),))
+        )
         if test_others_data:
-            test_dataset += torch.utils.data.TensorDataset(test_others_data_p, test_others_data_d, torch.zeros((len(test_others_data),)))
+            test_dataset += torch.utils.data.TensorDataset(
+                test_others_data_p,
+                test_others_data_d,
+                torch.zeros((len(test_others_data),)),
+            )
     else:
         if test_target_data:
-            train_dataset += torch.utils.data.TensorDataset(test_target_data_p, test_target_data_d, torch.ones((len(test_target_data),)))
+            train_dataset += torch.utils.data.TensorDataset(
+                test_target_data_p,
+                test_target_data_d,
+                torch.ones((len(test_target_data),)),
+            )
             num1s += len(test_target_data)
         if test_others_data:
-            train_dataset += torch.utils.data.TensorDataset(test_others_data_p, test_others_data_d, torch.zeros((len(test_others_data),)))
+            train_dataset += torch.utils.data.TensorDataset(
+                test_others_data_p,
+                test_others_data_d,
+                torch.zeros((len(test_others_data),)),
+            )
             num0s += len(test_others_data)
     data_ratio = (num0s + num1s) / num1s
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True
+    )
     if USE_TEST_SET:
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=True)
+        test_loader = torch.utils.data.DataLoader(
+            test_dataset, batch_size=BATCH_SIZE, shuffle=True
+        )
 
     best_loss = float("inf")
 
     while True:
         epoch += 1
 
-        def work(data_p, data_d, labels, is_train, disc_loss, contrastive_loss, gen_loss, contrastive_loss_ref):
+        def work(
+            data_p,
+            data_d,
+            labels,
+            is_train,
+            disc_loss,
+            contrastive_loss,
+            gen_loss,
+            contrastive_loss_ref,
+        ):
             if is_train:
                 net_d.train()
                 net_g.train()
             else:
                 net_d.eval()
                 net_g.eval()
-            data_p, data_d, labels = data_p.to(device), data_d.to(device), labels.to(device)
+            data_p, data_d, labels = (
+                data_p.to(device),
+                data_d.to(device),
+                labels.to(device),
+            )
             offset = torch.randint(0, max_offset, (1,))
-            data_p = data_p[:, offset:data_p.shape[1] - max_offset + offset]
-            data_d = data_d[:, offset:data_d.shape[1] - max_offset + offset]
-            data_p = pitch_shift_tensor(data_p, torch.randn(1, device=data_p.device) * 0.5)
-            fakes_legacy = postprocess(model_legacy(preprocess(data_p.unsqueeze(1), data_d.unsqueeze(1)))).squeeze(1).detach()
+            data_p = data_p[:, offset : data_p.shape[1] - max_offset + offset]
+            data_d = data_d[:, offset : data_d.shape[1] - max_offset + offset]
+            data_p = pitch_shift_tensor(
+                data_p, torch.randn(1, device=data_p.device) * 0.5
+            )
+            fakes_legacy = (
+                postprocess(
+                    model_legacy(preprocess(data_p.unsqueeze(1), data_d.unsqueeze(1)))
+                )
+                .squeeze(1)
+                .detach()
+            )
 
             d_data_inputs = data_p.clone()
             d_data_inputs[labels > eps] = fakes_legacy[labels > eps]
@@ -781,15 +1026,38 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             d_data_d = data_d.clone()
             d_labels = labels.clone()
             if torch.sum(labels < eps) > 0:
-                fakes = postprocess(net_g(preprocess(data_p[labels < eps].unsqueeze(1), data_d[labels < eps].unsqueeze(1)))).squeeze(1)
+                fakes = postprocess(
+                    net_g(
+                        preprocess(
+                            data_p[labels < eps].unsqueeze(1),
+                            data_d[labels < eps].unsqueeze(1),
+                        )
+                    )
+                ).squeeze(1)
                 d_data_p[labels < eps] = fakes.detach().clone()
                 d_data_inputs = torch.cat((d_data_inputs, data_p[labels < eps]), dim=0)
                 d_data_p = torch.cat((d_data_p, fakes_legacy[labels < eps]), dim=0)
                 d_data_d = torch.cat((d_data_d, data_d[labels < eps]), dim=0)
-                d_labels = torch.cat((d_labels, torch.ones((fakes_legacy[labels < eps].shape[0],), device=device)), dim=0)
+                d_labels = torch.cat(
+                    (
+                        d_labels,
+                        torch.ones(
+                            (fakes_legacy[labels < eps].shape[0],), device=device
+                        ),
+                    ),
+                    dim=0,
+                )
 
-            outputs = net_d(preprocess_d(d_data_p.unsqueeze(1), d_data_d.unsqueeze(1), d_data_inputs.unsqueeze(1)))
-            loss = F.binary_cross_entropy(outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1]))#, weight=((d_labels > eps) * (data_ratio - 1) + 1).unsqueeze(1).expand(-1, outputs.shape[1]))
+            outputs = net_d(
+                preprocess_d(
+                    d_data_p.unsqueeze(1),
+                    d_data_d.unsqueeze(1),
+                    d_data_inputs.unsqueeze(1),
+                )
+            )
+            loss = F.binary_cross_entropy(
+                outputs, d_labels.unsqueeze(1).expand(-1, outputs.shape[1])
+            )  # , weight=((d_labels > eps) * (data_ratio - 1) + 1).unsqueeze(1).expand(-1, outputs.shape[1]))
             disc_loss.append(loss.item())
 
             if is_train:
@@ -803,10 +1071,18 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 g_s_data_p = fakes.clone()
                 g_s_data_d = data_d[labels < eps].clone()
                 g_s_labels = torch.zeros((g_s_data_p.shape[0],), device=device)
-                outputs = net_d(preprocess_d(g_s_data_p.unsqueeze(1), g_s_data_d.unsqueeze(1), g_s_data_inputs.unsqueeze(1)))
+                outputs = net_d(
+                    preprocess_d(
+                        g_s_data_p.unsqueeze(1),
+                        g_s_data_d.unsqueeze(1),
+                        g_s_data_inputs.unsqueeze(1),
+                    )
+                )
 
                 loss_total = 0
-                loss = F.binary_cross_entropy(outputs, 1 - g_s_labels.unsqueeze(1).expand(-1, outputs.shape[1]))
+                loss = F.binary_cross_entropy(
+                    outputs, 1 - g_s_labels.unsqueeze(1).expand(-1, outputs.shape[1])
+                )
                 loss_total += loss
                 gen_loss.append(loss.item())
 
@@ -814,13 +1090,14 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 loss_total += loss * c_loss_factor
                 contrastive_loss.append(loss.item())
 
-                contrastive_loss_ref.append(F.mse_loss(fakes, fakes_legacy[labels < eps]).item())
+                contrastive_loss_ref.append(
+                    F.mse_loss(fakes, fakes_legacy[labels < eps]).item()
+                )
 
                 if is_train:
                     optimizer_g.zero_grad()
                     loss_total.backward()
                     optimizer_g.step()
-
 
         train_disc_loss = []
         train_gen_loss = []
@@ -829,7 +1106,16 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
         for batch_idx, (data_p, data_d, labels) in enumerate(train_loader):
             if batch_idx % 10 == 0:
                 print(f"train {batch_idx}/{len(train_loader)}")
-            work(data_p, data_d, labels, True, train_disc_loss, train_contrastive_loss, train_gen_loss, train_contrastive_loss_ref)
+            work(
+                data_p,
+                data_d,
+                labels,
+                True,
+                train_disc_loss,
+                train_contrastive_loss,
+                train_gen_loss,
+                train_contrastive_loss_ref,
+            )
 
         train_disc_loss = np.mean(train_disc_loss)
         train_contrastive_loss = np.mean(train_contrastive_loss)
@@ -845,7 +1131,16 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             for batch_idx, (data_p, data_d, labels) in enumerate(test_loader):
                 if batch_idx % 10 == 0:
                     print(f"val {batch_idx}/{len(test_loader)}")
-                work(data_p, data_d, labels, False, test_disc_loss, test_contrastive_loss, test_gen_loss, test_contrastive_loss_ref)
+                work(
+                    data_p,
+                    data_d,
+                    labels,
+                    False,
+                    test_disc_loss,
+                    test_contrastive_loss,
+                    test_gen_loss,
+                    test_contrastive_loss_ref,
+                )
 
             test_disc_loss = np.mean(test_disc_loss)
             test_contrastive_loss = np.mean(test_contrastive_loss)
@@ -853,21 +1148,25 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
             test_loss = test_contrastive_loss * c_loss_factor + test_gen_loss
             test_contrastive_loss_ref = np.mean(test_contrastive_loss_ref)
 
-
         if epoch % 1 == 0:
             f0_magic_log(f"Epoch: {epoch:d}")
-            f0_magic_log(f"t_loss: {train_loss:.4f} t_loss_c: {train_contrastive_loss:.4f} t_loss_g: {train_gen_loss:.4f} t_loss_d: {train_disc_loss:.4f} t_loss_c_ref: {train_contrastive_loss_ref:.4f}")
+            f0_magic_log(
+                f"t_loss: {train_loss:.4f} t_loss_c: {train_contrastive_loss:.4f} t_loss_g: {train_gen_loss:.4f} t_loss_d: {train_disc_loss:.4f} t_loss_c_ref: {train_contrastive_loss_ref:.4f}"
+            )
             if USE_TEST_SET:
-                f0_magic_log(f"v_loss: {test_loss:.4f} t_loss_c: {test_contrastive_loss:.4f} v_loss_g: {test_gen_loss:.4f} v_loss_d: {test_disc_loss:.4f} v_loss_c_ref: {test_contrastive_loss_ref:.4f}")
-            checkpoint = { 
-                          'epoch': epoch,
-                          'net_g': net_g.state_dict(),
-                          'net_d': net_d.state_dict(),
-                          'optimizer_g': optimizer_g.state_dict(),
-                          'optimizer_d': optimizer_d.state_dict()}
+                f0_magic_log(
+                    f"v_loss: {test_loss:.4f} t_loss_c: {test_contrastive_loss:.4f} v_loss_g: {test_gen_loss:.4f} v_loss_d: {test_disc_loss:.4f} v_loss_c_ref: {test_contrastive_loss_ref:.4f}"
+                )
+            checkpoint = {
+                "epoch": epoch,
+                "net_g": net_g.state_dict(),
+                "net_d": net_d.state_dict(),
+                "optimizer_g": optimizer_g.state_dict(),
+                "optimizer_d": optimizer_d.state_dict(),
+            }
             while True:
                 try:
-                    torch.save(net_g.state_dict(), MODEL_FILE) 
+                    torch.save(net_g.state_dict(), MODEL_FILE)
                     break
                 except:
                     pass
@@ -886,13 +1185,15 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
                 except:
                     pass
             print(f"Data saved.")
-        if True:#(USE_TEST_SET and test_loss < best_loss) or ((not USE_TEST_SET) and train_loss < best_loss):
-            #            best_loss = test_loss if USE_TEST_SET else train_loss 
+        if (
+            True
+        ):  # (USE_TEST_SET and test_loss < best_loss) or ((not USE_TEST_SET) and train_loss < best_loss):
+            #            best_loss = test_loss if USE_TEST_SET else train_loss
             if epoch % EPOCH_PER_BAK == 0:
                 BAK_FILE = name + " " + str(epoch) + ".pt"
                 while True:
                     try:
-                        torch.save(net_g.state_dict(), BAK_FILE) 
+                        torch.save(net_g.state_dict(), BAK_FILE)
                         break
                     except:
                         pass
@@ -900,8 +1201,12 @@ def train_model(name, train_target_data, train_others_data, test_target_data, te
 
 
 if __name__ == "__main__":
-#    random.seed(42)
-#    np.random.seed(42)
+    #    random.seed(42)
+    #    np.random.seed(42)
 
-    train_target_data, train_others_data, test_target_data, test_others_data = load_data()
-    train_model("new", train_target_data, train_others_data, test_target_data, test_others_data)
+    train_target_data, train_others_data, test_target_data, test_others_data = (
+        load_data()
+    )
+    train_model(
+        "new", train_target_data, train_others_data, test_target_data, test_others_data
+    )

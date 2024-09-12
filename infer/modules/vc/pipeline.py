@@ -30,6 +30,7 @@ bh, ah = signal.butter(N=5, Wn=48, btype="high", fs=16000)
 
 input_audio_path2wav = {}
 
+
 @lru_cache
 def cache_harvest_f0(input_audio_path, fs, f0max, f0min, frame_period):
     audio = input_audio_path2wav[input_audio_path]
@@ -45,8 +46,8 @@ def cache_harvest_f0(input_audio_path, fs, f0max, f0min, frame_period):
 
 
 def k_weighting_filter(data, rate):
-    high_shelf = IIRfilter(4.0, 1 / np.sqrt(2), 1500.0, rate, 'high_shelf')
-    high_pass = IIRfilter(0.0, 0.5, 38.0, rate, 'high_pass')
+    high_shelf = IIRfilter(4.0, 1 / np.sqrt(2), 1500.0, rate, "high_shelf")
+    high_pass = IIRfilter(0.0, 0.5, 38.0, rate, "high_pass")
     if len(data.shape) == 1:
         data = high_shelf.apply_filter(data)
         data = high_pass.apply_filter(data)
@@ -62,11 +63,13 @@ def change_rms(data1, sr1, data2, sr2, rate):  # 1是输入音频，2是输出�
     # print(data1.max(),data2.max())
     data1_filtered = k_weighting_filter(data1, sr1)
     data2_filtered = k_weighting_filter(data2, sr2)
-    
+
     rms1 = librosa.feature.rms(
         y=data1_filtered, frame_length=sr1 // 2 * 2, hop_length=sr1 // 2
     )  # 每半秒一个点
-    rms2 = librosa.feature.rms(y=data2_filtered, frame_length=sr2 // 2 * 2, hop_length=sr2 // 2)
+    rms2 = librosa.feature.rms(
+        y=data2_filtered, frame_length=sr2 // 2 * 2, hop_length=sr2 // 2
+    )
     rms1 = torch.from_numpy(rms1)
     rms1 = F.interpolate(
         rms1.unsqueeze(0), size=data2.shape[0], mode="linear"
@@ -112,7 +115,7 @@ class Pipeline(object):
         filter_radius,
         f0_invert_axis=None,
         inp_f0=None,
-        f0_npy_path=""
+        f0_npy_path="",
     ):
         global input_audio_path2wav
         time_step = self.window / self.sr * 1000
@@ -198,10 +201,10 @@ class Pipeline(object):
                 pd = torchcrepe.filter.median(pd, 3)
                 pd = pd[0].cpu().numpy()
                 pd = np.interp(
-                            np.arange(0, len(pd) * f0.shape[0], len(pd)) / f0.shape[0],
-                            np.arange(0, len(pd)),
-                            pd
-                        )
+                    np.arange(0, len(pd) * f0.shape[0], len(pd)) / f0.shape[0],
+                    np.arange(0, len(pd)),
+                    pd,
+                )
                 f0[pd < 0.1] = 0
 
             if "privateuseone" in str(self.device):  # clean ortruntime memory
@@ -227,7 +230,7 @@ class Pipeline(object):
             )
 
         if f0_invert_axis is not None:
-            f0 = np.where(f0 >= f0_min, (f0_invert_axis ** 2) / f0, f0)
+            f0 = np.where(f0 >= f0_min, (f0_invert_axis**2) / f0, f0)
 
         f0 *= pow(2, f0_up_key / 12)
         # with open("test.txt","w")as f:f.write("\n".join([str(i)for i in f0.tolist()]))
@@ -271,14 +274,17 @@ class Pipeline(object):
         feature_override=None,
     ):  # ,file_index,file_big_npy
         t0 = ttime()
-        feats = extract_features_simple_segment(audio0, model=model, version=version, device=self.device, is_half=self.is_half)
+        feats = extract_features_simple_segment(
+            audio0,
+            model=model,
+            version=version,
+            device=self.device,
+            is_half=self.is_half,
+        )
         if pitch is not None and pitchf is not None:
             feats0 = feats.clone()
             feats_indexed = feats.clone()
-        if (
-            not isinstance(index, type(None))
-            and not isinstance(big_npy, type(None))
-        ):
+        if not isinstance(index, type(None)) and not isinstance(big_npy, type(None)):
             npy = feats[0].cpu().numpy()
             if self.is_half:
                 npy = npy.astype("float32")
@@ -301,9 +307,9 @@ class Pipeline(object):
             feats0 = F.interpolate(feats0.permute(0, 2, 1), scale_factor=2).permute(
                 0, 2, 1
             )
-            feats_indexed = F.interpolate(feats_indexed.permute(0, 2, 1), scale_factor=2).permute(
-                0, 2, 1
-            )
+            feats_indexed = F.interpolate(
+                feats_indexed.permute(0, 2, 1), scale_factor=2
+            ).permute(0, 2, 1)
         t1 = ttime()
         p_len = audio0.shape[0] // self.window
         if feats.shape[1] < p_len:
@@ -312,15 +318,22 @@ class Pipeline(object):
                 pitch = pitch[:, :p_len]
                 pitchf = pitchf[:, :p_len]
 
-        if pitch is not None and pitchf is not None and not isinstance(index, type(None)) and not isinstance(big_npy, type(None)):
+        if (
+            pitch is not None
+            and pitchf is not None
+            and not isinstance(index, type(None))
+            and not isinstance(big_npy, type(None))
+        ):
             pitchff = pitchf.clone()
             pitchff[pitchf > 0] = 1
             pitchff[pitchf < 1] = 0
             pitchff = pitchff.unsqueeze(-1)
-            feats = feats * pitchff + (feats0 * (1 - protect) + feats_indexed * protect) * (1 - pitchff)
+            feats = feats * pitchff + (
+                feats0 * (1 - protect) + feats_indexed * protect
+            ) * (1 - pitchff)
             feats = feats.to(feats0.dtype)
         if feature_override is not None:
-            feats[:,:] = feature_override
+            feats[:, :] = feature_override
         p_len = torch.tensor([p_len], device=self.device).long()
         with torch.no_grad():
             hasp = pitch is not None and pitchf is not None
@@ -379,7 +392,13 @@ class Pipeline(object):
         else:
             index = big_npy = None
         if if_feature_average:
-            feats = extract_features_simple(feature_audio, model=model, version=version, device=self.device, is_half=self.is_half)
+            feats = extract_features_simple(
+                feature_audio,
+                model=model,
+                version=version,
+                device=self.device,
+                is_half=self.is_half,
+            )
             npy = feats[0].cpu().numpy()
             npy = np.average(npy, axis=0)
             feature_override = torch.from_numpy(npy).to(self.device)
@@ -387,16 +406,26 @@ class Pipeline(object):
             feature_override = None
             if feature_audio is not None:
                 if feature_audio.shape[0] > audio.shape[0]:
-                    feature_audio = feature_audio[:audio.shape[0]]
+                    feature_audio = feature_audio[: audio.shape[0]]
                 else:
-                    feature_audio = np.pad(feature_audio, (0, audio.shape[0] - feature_audio.shape[0]), mode="constant")
+                    feature_audio = np.pad(
+                        feature_audio,
+                        (0, audio.shape[0] - feature_audio.shape[0]),
+                        mode="constant",
+                    )
         audio = signal.filtfilt(bh, ah, audio)
         audio_pad = np.pad(audio, (self.window // 2, self.window // 2), mode="reflect")
         if feature_audio is not None:
             feature_audio = signal.filtfilt(bh, ah, feature_audio)
-            feature_audio_pad = np.pad(feature_audio, (self.window // 2, self.window // 2), mode="reflect")
+            feature_audio_pad = np.pad(
+                feature_audio, (self.window // 2, self.window // 2), mode="reflect"
+            )
         opt_ts = []
-        t_center = self.t_center if x_center_override is None else round(x_center_override * self.sr)
+        t_center = (
+            self.t_center
+            if x_center_override is None
+            else round(x_center_override * self.sr)
+        )
         t_query = min(self.t_query, t_center // 2)
         if audio_pad.shape[0] > self.t_max:
             audio_sum = np.zeros_like(audio)
@@ -417,7 +446,9 @@ class Pipeline(object):
         t1 = ttime()
         audio_pad = np.pad(audio, (self.t_pad, self.t_pad), mode="reflect")
         if feature_audio is not None:
-            feature_audio_pad = np.pad(feature_audio, (self.t_pad, self.t_pad), mode="reflect")
+            feature_audio_pad = np.pad(
+                feature_audio, (self.t_pad, self.t_pad), mode="reflect"
+            )
         p_len = audio_pad.shape[0] // self.window
         inp_f0 = None
         if hasattr(f0_file, "name"):
@@ -471,7 +502,7 @@ class Pipeline(object):
                         index_rate,
                         version,
                         protect,
-                        feature_override=feature_override
+                        feature_override=feature_override,
                     )[self.t_pad_tgt : -self.t_pad_tgt]
                 )
             else:
@@ -489,7 +520,7 @@ class Pipeline(object):
                         index_rate,
                         version,
                         protect,
-                        feature_override=feature_override
+                        feature_override=feature_override,
                     )[self.t_pad_tgt : -self.t_pad_tgt]
                 )
             s = t
@@ -508,7 +539,7 @@ class Pipeline(object):
                     index_rate,
                     version,
                     protect,
-                    feature_override=feature_override
+                    feature_override=feature_override,
                 )[self.t_pad_tgt : -self.t_pad_tgt]
             )
         else:
@@ -526,7 +557,7 @@ class Pipeline(object):
                     index_rate,
                     version,
                     protect,
-                    feature_override=feature_override
+                    feature_override=feature_override,
                 )[self.t_pad_tgt : -self.t_pad_tgt]
             )
         audio_opt = np.concatenate(audio_opt)

@@ -59,7 +59,9 @@ class FeatureInput(object):
             torch_device_index = 0
             torch_device = None
             if torch.cuda.is_available():
-                torch_device = torch.device(f"cuda:{torch_device_index % torch.cuda.device_count()}")
+                torch_device = torch.device(
+                    f"cuda:{torch_device_index % torch.cuda.device_count()}"
+                )
             elif torch.backends.mps.is_available():
                 torch_device = torch.device("mps")
             else:
@@ -83,7 +85,7 @@ class FeatureInput(object):
             f0_crepe = torchcrepe.filter.mean(f0_crepe, 3)
             f0_crepe[pd < 0.1] = 0
             f0_crepe = f0_crepe[0].cpu().numpy()
-            f0_crepe = f0_crepe[1:] # Get rid of extra first frame
+            f0_crepe = f0_crepe[1:]  # Get rid of extra first frame
 
             # Resize the pitch
             target_len = f0.shape[0]
@@ -93,13 +95,19 @@ class FeatureInput(object):
             target = np.interp(
                 np.arange(0, len(source) * target_len, len(source)) / target_len,
                 np.arange(0, len(source)),
-                source
+                source,
             )
             f0_crepe = np.nan_to_num(target)
 
             f0_rmvpe_mel = np.log(1 + f0 / 700)
             f0_crepe_mel = np.log(1 + f0_crepe / 700)
-            f0 = np.where(np.logical_and(f0_rmvpe_mel > 0.001, f0_crepe_mel - f0_rmvpe_mel > 0.05), f0_crepe, f0)
+            f0 = np.where(
+                np.logical_and(
+                    f0_rmvpe_mel > 0.001, f0_crepe_mel - f0_rmvpe_mel > 0.05
+                ),
+                f0_crepe,
+                f0,
+            )
 
         return f0
 
@@ -172,10 +180,10 @@ if __name__ == "__main__":
                 continue
             paths.append([inp_path, opt_root1, opt_root2, variations[name]])
         else:
-            name_root = name[:name.find("(") - 1] + name[name.find("."):]
+            name_root = name[: name.find("(") - 1] + name[name.find(".") :]
             if name_root not in variations:
                 variations[name_root] = []
-            variations[name_root].append(name)    
+            variations[name_root].append(name)
     try:
         featureInput.go(paths[i_part::n_part], "rmvpe")
     except:

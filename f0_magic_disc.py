@@ -12,6 +12,8 @@ channels = [64, 128, 256, 256, 512]
 kernel_size_conv = [5, 5, 5, 5, 5]
 kernel_size_pool = [3, 3, 3, 3, 3]
 fc_width = [3, 7, 3, 9, 5, 2]
+
+
 class PitchContourDiscriminatorP(nn.Module):
     def __init__(self, c, p, t):
         super(PitchContourDiscriminatorP, self).__init__()
@@ -21,34 +23,51 @@ class PitchContourDiscriminatorP(nn.Module):
         self.pools = nn.ModuleList([])
         for i in range(depth[self.p]):
             self.blocks.append(
-                    nn.Sequential(
-                        nn.Conv1d(in_channels=c if i == 0 else channels[i - 1], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
-                        nn.GELU(),
-                        nn.Conv1d(in_channels=channels[i], out_channels=channels[i], kernel_size=kernel_size_conv[i]),
-                        nn.GELU(),
-                        )
-                    )
+                nn.Sequential(
+                    nn.Conv1d(
+                        in_channels=c if i == 0 else channels[i - 1],
+                        out_channels=channels[i],
+                        kernel_size=kernel_size_conv[i],
+                    ),
+                    nn.GELU(),
+                    nn.Conv1d(
+                        in_channels=channels[i],
+                        out_channels=channels[i],
+                        kernel_size=kernel_size_conv[i],
+                    ),
+                    nn.GELU(),
+                )
+            )
             self.pools.append(nn.MaxPool1d(kernel_size=kernel_size_pool[i]))
         self.fc1 = nn.Sequential(
-                nn.Linear(channels[depth[self.p] - 1] * fc_width[self.p], channels[depth[self.p] - 1] // 2),
-                nn.GELU(),
-                )
+            nn.Linear(
+                channels[depth[self.p] - 1] * fc_width[self.p],
+                channels[depth[self.p] - 1] // 2,
+            ),
+            nn.GELU(),
+        )
         self.fc2 = nn.Sequential(
-                nn.Linear(channels[depth[self.p] - 1] // 2, channels[depth[self.p] - 1] // 2),
-                nn.GELU(),
-                )
+            nn.Linear(
+                channels[depth[self.p] - 1] // 2, channels[depth[self.p] - 1] // 2
+            ),
+            nn.GELU(),
+        )
         self.fc3 = nn.Sequential(
-                nn.Linear(channels[depth[self.p] - 1] // 2, 1),
-                nn.Sigmoid(),
-                )
+            nn.Linear(channels[depth[self.p] - 1] // 2, 1),
+            nn.Sigmoid(),
+        )
 
         with torch.no_grad():
             for block in self.blocks:
                 block[-2].weight *= rescale
 
-
     def forward(self, x):
-        x = x[:, :, (x.shape[2] + segment_size[self.p]) // 2 - segment_size[self.p]:(x.shape[2] + segment_size[self.p]) // 2]
+        x = x[
+            :,
+            :,
+            (x.shape[2] + segment_size[self.p]) // 2
+            - segment_size[self.p] : (x.shape[2] + segment_size[self.p]) // 2,
+        ]
         x = x.view(x.shape[0], x.shape[1], -1, periods[self.p])
         if self.t:
             x = torch.transpose(x, 2, 3)
@@ -73,7 +92,6 @@ class PitchContourDiscriminator(nn.Module):
             self.discs.append(PitchContourDiscriminatorP(c, i, False))
             if periods[i] > 1:
                 self.discs.append(PitchContourDiscriminatorP(c, i, True))
-
 
     def forward(self, x):
         return torch.cat(tuple(disc(x) for disc in self.discs), dim=1)

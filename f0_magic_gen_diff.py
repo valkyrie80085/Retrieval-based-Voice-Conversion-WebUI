@@ -15,8 +15,9 @@ bridge_width = 3
 fourier_dim = 64
 time_dim = 256
 
+
 class SinusoidalPosEmb(nn.Module):
-    def __init__(self, dim, theta = 10000):
+    def __init__(self, dim, theta=10000):
         super().__init__()
         self.dim = dim
         self.theta = theta
@@ -34,9 +35,15 @@ class SinusoidalPosEmb(nn.Module):
 class resBlock(nn.Module):
     def __init__(self, inc, midc, outc, kernel_size, time_dim, is_initial=False):
         super().__init__()
-        self.conv1 = nn.Conv1d(in_channels=inc, out_channels=midc, kernel_size=kernel_size, padding="same")
-        self.conv2 = nn.Conv1d(in_channels=midc, out_channels=outc, kernel_size=kernel_size, padding="same")
-        self.idmapping = nn.Conv1d(in_channels=inc, out_channels=outc, kernel_size=1, padding="same")
+        self.conv1 = nn.Conv1d(
+            in_channels=inc, out_channels=midc, kernel_size=kernel_size, padding="same"
+        )
+        self.conv2 = nn.Conv1d(
+            in_channels=midc, out_channels=outc, kernel_size=kernel_size, padding="same"
+        )
+        self.idmapping = nn.Conv1d(
+            in_channels=inc, out_channels=outc, kernel_size=1, padding="same"
+        )
         self.is_initial = is_initial
         self.mlp = nn.Linear(time_dim, midc * 2)
         with torch.no_grad():
@@ -72,18 +79,50 @@ class PitchContourGenerator(nn.Module):
         )
 
         for i in range(len(kernel_size_conv)):
-            self.down_blocks.append(resBlock(c if i == 0 else channels[i - 1], channels[i], channels[i], kernel_size_conv[i], time_dim, i == 0))
-            self.down_blocks.append(resBlock(channels[i], channels[i], channels[i], kernel_size_conv[i], time_dim))
+            self.down_blocks.append(
+                resBlock(
+                    c if i == 0 else channels[i - 1],
+                    channels[i],
+                    channels[i],
+                    kernel_size_conv[i],
+                    time_dim,
+                    i == 0,
+                )
+            )
+            self.down_blocks.append(
+                resBlock(
+                    channels[i], channels[i], channels[i], kernel_size_conv[i], time_dim
+                )
+            )
 
-            self.up_blocks.append(resBlock(channels[i], channels[i], 1 if i == 0 else channels[i - 1], kernel_size_conv[i], time_dim))
-            self.up_blocks.append(resBlock(2 * channels[i], channels[i], channels[i], kernel_size_conv[i], time_dim))
+            self.up_blocks.append(
+                resBlock(
+                    channels[i],
+                    channels[i],
+                    1 if i == 0 else channels[i - 1],
+                    kernel_size_conv[i],
+                    time_dim,
+                )
+            )
+            self.up_blocks.append(
+                resBlock(
+                    2 * channels[i],
+                    channels[i],
+                    channels[i],
+                    kernel_size_conv[i],
+                    time_dim,
+                )
+            )
 
             self.downsamples.append(nn.MaxPool1d(kernel_size=kernel_size_pool[i]))
             self.upsamples.append(nn.Upsample(scale_factor=kernel_size_pool[i]))
 
-        self.bridge1 = resBlock(channels[-2], channels[-1], channels[-1], bridge_width, time_dim)
-        self.bridge2 = resBlock(channels[-1], channels[-1], channels[-2], bridge_width, time_dim)
-
+        self.bridge1 = resBlock(
+            channels[-2], channels[-1], channels[-1], bridge_width, time_dim
+        )
+        self.bridge2 = resBlock(
+            channels[-1], channels[-1], channels[-2], bridge_width, time_dim
+        )
 
     def forward(self, x, t):
         t = self.time_mlp(t)

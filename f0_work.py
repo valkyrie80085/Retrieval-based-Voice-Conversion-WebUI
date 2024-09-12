@@ -2,7 +2,13 @@ import torch
 
 import numpy as np
 
-from f0_magic import compute_f0_inference, compute_d, resize, pitch_invert_mel, pitch_shift_mel
+from f0_magic import (
+    compute_f0_inference,
+    compute_d,
+    resize,
+    pitch_invert_mel,
+    pitch_shift_mel,
+)
 from f0_magic import postprocess, preprocess_s, preprocess_t, padding_size
 from f0_magic_gen_legacy import PitchContourGenerator, segment_size
 from f0_magic import snap
@@ -17,7 +23,7 @@ torch.manual_seed(42)
 random.seed(42)
 eps = 1e-3
 
-with open('f0_test_config.json', 'r') as openfile:
+with open("f0_test_config.json", "r") as openfile:
     data = json.load(openfile)
     model_path = data["model_path"]
     index_file = data["index_file"]
@@ -37,13 +43,21 @@ if not model_path.endswith(".pt"):
 
 model = PitchContourGenerator().to("cuda")
 model.eval()
-model.load_state_dict(torch.load(model_path)) 
+model.load_state_dict(torch.load(model_path))
 print(f"Model loaded from '{model_path:s}'")
 
-def walk(path):
-   return sum(([os.path.join(dirpath, file_name) for file_name in filenames] for (dirpath, dirnames, filenames) in os.walk(path)), [])
 
-WORK_PATH = "C:/datasets/singing_ai/f0_magic/" 
+def walk(path):
+    return sum(
+        (
+            [os.path.join(dirpath, file_name) for file_name in filenames]
+            for (dirpath, dirnames, filenames) in os.walk(path)
+        ),
+        [],
+    )
+
+
+WORK_PATH = "C:/datasets/singing_ai/f0_magic/"
 for filename in walk(WORK_PATH):
     if os.path.splitext(filename)[1] == ".wav":
         print(filename)
@@ -59,15 +73,31 @@ for filename in walk(WORK_PATH):
         extra = segment_size - ((len(modified_contour_mel) - 1) % segment_size + 1)
         modified_contour_mel = np.pad(modified_contour_mel, (extra, 0))
         input_phone_diff_pad = np.pad(input_phone_diff_pad, (extra, 0))
-        modified_contour_mel_tensor = torch.tensor(modified_contour_mel, dtype=torch.float32, device="cuda")
-        input_phone_diff_tensor = torch.tensor(input_phone_diff_pad, dtype=torch.float32, device="cuda")
+        modified_contour_mel_tensor = torch.tensor(
+            modified_contour_mel, dtype=torch.float32, device="cuda"
+        )
+        input_phone_diff_tensor = torch.tensor(
+            input_phone_diff_pad, dtype=torch.float32, device="cuda"
+        )
         if snap_sensitivity is not None:
-            modified_contour_mel_tensor = snap(modified_contour_mel_tensor, snap_sensitivity)
-        modified_contour_mel_tensor = postprocess(model(preprocess(modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0), input_phone_diff_tensor.unsqueeze(0).unsqueeze(0)))).squeeze(0).squeeze(0)
+            modified_contour_mel_tensor = snap(
+                modified_contour_mel_tensor, snap_sensitivity
+            )
+        modified_contour_mel_tensor = (
+            postprocess(
+                model(
+                    preprocess(
+                        modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0),
+                        input_phone_diff_tensor.unsqueeze(0).unsqueeze(0),
+                    )
+                )
+            )
+            .squeeze(0)
+            .squeeze(0)
+        )
         modified_contour_mel = modified_contour_mel_tensor.detach().cpu().numpy()
         modified_contour_mel = modified_contour_mel[extra:]
         modified_contour_mel = modified_contour_mel[padding_size:-padding_size]
-
 
         modified_contour_mel[input_contour_mel < eps] = 0
         np.save(output_file, modified_contour_mel)

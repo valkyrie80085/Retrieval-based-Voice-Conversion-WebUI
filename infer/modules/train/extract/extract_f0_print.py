@@ -87,7 +87,9 @@ class FeatureInput(object):
             torch_device_index = 0
             torch_device = None
             if torch.cuda.is_available():
-                torch_device = torch.device(f"cuda:{torch_device_index % torch.cuda.device_count()}")
+                torch_device = torch.device(
+                    f"cuda:{torch_device_index % torch.cuda.device_count()}"
+                )
             elif torch.backends.mps.is_available():
                 torch_device = torch.device("mps")
             else:
@@ -111,7 +113,7 @@ class FeatureInput(object):
             f0 = torchcrepe.filter.mean(f0, 3)
             f0[pd < 0.1] = 0
             f0 = f0[0].cpu().numpy()
-            f0 = f0[1:] # Get rid of extra first frame
+            f0 = f0[1:]  # Get rid of extra first frame
         elif f0_method == "rmvpe":
             if hasattr(self, "model_rmvpe") == False:
                 from infer.lib.rmvpe import RMVPE
@@ -192,7 +194,7 @@ if __name__ == "__main__":
                 continue
             paths.append([inp_path, opt_root1, opt_root2, variations[name]])
         else:
-            name_root = name[:name.find("(") - 1] + name[name.find("."):]
+            name_root = name[: name.find("(") - 1] + name[name.find(".") :]
             if name_root not in variations:
                 variations[name_root] = []
             variations[name_root].append(name)

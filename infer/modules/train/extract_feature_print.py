@@ -29,9 +29,10 @@ sys.path.append(now_dir)
 from infer.lib.audio import load_audio
 from infer.lib.audio import extract_features_new
 
-index_file = None#"D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/logs/ipa/added_IVF521_Flat_nprobe_1_ipa_v2.index" 
+index_file = None  # "D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/logs/ipa/added_IVF521_Flat_nprobe_1_ipa_v2.index"
 if index_file is not None:
     import faiss
+
     index = faiss.read_index(index_file)
     # big_npy = np.load(file_big_npy)
     big_npy = index.reconstruct_n(0, index.ntotal)
@@ -129,7 +130,10 @@ else:
             if file.endswith(".wav"):
                 wav_path = "%s/%s" % (wavPath, file)
                 out_path = "%s/%s" % (outPath, file.replace("wav", "npy"))
-                out_path_extended = "%s/%s_extended" % (outPath, file.replace("wav", "npy"))
+                out_path_extended = "%s/%s_extended" % (
+                    outPath,
+                    file.replace("wav", "npy"),
+                )
 
                 if os.path.exists(out_path):
                     continue
@@ -141,7 +145,9 @@ else:
                     audio_shifted = None
 
                 audio = load_audio(wav_path, 16000)
-                feats = extract_features_new(audio, audio_shifted, model=model, version=version, device=device)
+                feats = extract_features_new(
+                    audio, audio_shifted, model=model, version=version, device=device
+                )
 
                 feats = feats.squeeze(0).float().cpu().numpy()
 
@@ -158,17 +164,27 @@ else:
                         pd = np.ones_like(f0)
                         pd[f0 < 0.001] = 0
                         pd = np.interp(
-                            np.arange(0, len(pd) * feats.shape[0], len(pd)) / feats.shape[0],
+                            np.arange(0, len(pd) * feats.shape[0], len(pd))
+                            / feats.shape[0],
                             np.arange(0, len(pd)),
-                            pd
+                            pd,
                         )
                         safe = np.abs(pd - 0.5) > 0.4999
-                        safe = np.pad(np.logical_and(np.logical_and(safe[:-2], safe[1:-1]), safe[2:]), (1, 1))
+                        safe = np.pad(
+                            np.logical_and(
+                                np.logical_and(safe[:-2], safe[1:-1]), safe[2:]
+                            ),
+                            (1, 1),
+                        )
                         zeros = pd < 0.5
                         pd = np.ones_like(pd)
                         pd[zeros] = 0
-                        feats_extended = np.concatenate((feats, pd[:, np.newaxis]), axis=1)
-                        np.save(out_path_extended, feats_extended[safe], allow_pickle=False)
+                        feats_extended = np.concatenate(
+                            (feats, pd[:, np.newaxis]), axis=1
+                        )
+                        np.save(
+                            out_path_extended, feats_extended[safe], allow_pickle=False
+                        )
                 else:
                     printt("%s-contains nan" % file)
                 if idx % n == 0:

@@ -168,11 +168,74 @@ class VC:
             feature_audio_path = clean_path(feature_audio_path)
         if f0_npy_path != "":
             f0_npy_path = clean_path(f0_npy_path)
-        input_audio_path = clean_path(input_audio_path)  # 防止小白拷路径头尾带了空格和"和回车
+        input_audio_path = clean_path(
+            input_audio_path
+        )  # 防止小白拷路径头尾带了空格和"和回车
         f0_up_key = int(f0_up_key)
 
         if f0_invert_axis != " ":
-            notes = ["C2", "C#2/Db2", "D2", "D#2/Eb2", "E2", "F2", "F#2/Gb2", "G2", "G#2/Ab2", "A2", "A#2/Bb2", "B2", "C3", "C#3/Db3", "D3", "D#3/Eb3", "E3", "F3", "F#3/Gb3", "G3", "G#3/Ab3", "A3", "A#3/Bb3", "B3", "C4", "C#4/Db4", "D4", "D#4/Eb4", "E4", "F4", "F#4/Gb4", "G4", "G#4/Ab4", "A4", "A#4/Bb4", "B4", "C4", "C#4/Db4", "D4", "D#4/Eb4", "E4", "F4", "F#4/Gb4", "G4", "G#4/Ab4", "A4", "A#4/Bb4", "B4", "C5", "C#5/Db5", "D5", "D#5/Eb5", "E5", "F5", "F#5/Gb5", "G5", "G#5/Ab5", "A5", "A#5/Bb5", "B5"]
+            notes = [
+                "C2",
+                "C#2/Db2",
+                "D2",
+                "D#2/Eb2",
+                "E2",
+                "F2",
+                "F#2/Gb2",
+                "G2",
+                "G#2/Ab2",
+                "A2",
+                "A#2/Bb2",
+                "B2",
+                "C3",
+                "C#3/Db3",
+                "D3",
+                "D#3/Eb3",
+                "E3",
+                "F3",
+                "F#3/Gb3",
+                "G3",
+                "G#3/Ab3",
+                "A3",
+                "A#3/Bb3",
+                "B3",
+                "C4",
+                "C#4/Db4",
+                "D4",
+                "D#4/Eb4",
+                "E4",
+                "F4",
+                "F#4/Gb4",
+                "G4",
+                "G#4/Ab4",
+                "A4",
+                "A#4/Bb4",
+                "B4",
+                "C4",
+                "C#4/Db4",
+                "D4",
+                "D#4/Eb4",
+                "E4",
+                "F4",
+                "F#4/Gb4",
+                "G4",
+                "G#4/Ab4",
+                "A4",
+                "A#4/Bb4",
+                "B4",
+                "C5",
+                "C#5/Db5",
+                "D5",
+                "D#5/Eb5",
+                "E5",
+                "F5",
+                "F#5/Gb5",
+                "G5",
+                "G#5/Ab5",
+                "A5",
+                "A#5/Bb5",
+                "B5",
+            ]
             offset = -33
             for note in notes:
                 if note == f0_invert_axis:
@@ -251,9 +314,24 @@ class VC:
             )
             if output_to_file:
                 try:
-                    sf.write("D:/matthew99/AI/singing_ai/tmp/output %s %.0f %.2f %.2f %.2f %s %f.wav" % (os.path.splitext(os.path.split(input_audio_path)[1])[0], f0_up_key, index_rate, protect, segment_length, f0_method, time.time() * 1000), audio_opt, tgt_sr) 
-                    print("Success.\n%s\nTime:\nnpy: %.2fs, f0: %.2fs, infer: %.2fs."
-                        % (index_info, *times))
+                    sf.write(
+                        "D:/matthew99/AI/singing_ai/tmp/output %s %.0f %.2f %.2f %.2f %s %f.wav"
+                        % (
+                            os.path.splitext(os.path.split(input_audio_path)[1])[0],
+                            f0_up_key,
+                            index_rate,
+                            protect,
+                            segment_length,
+                            f0_method,
+                            time.time() * 1000,
+                        ),
+                        audio_opt,
+                        tgt_sr,
+                    )
+                    print(
+                        "Success.\n%s\nTime:\nnpy: %.2fs, f0: %.2fs, infer: %.2fs."
+                        % (index_info, *times)
+                    )
                 except:
                     pass
             return (
@@ -284,7 +362,7 @@ class VC:
         format1,
     ):
         try:
-            dir_path = clean_path(dir_path) # 防止小白拷路径头尾带了空格和"和回车
+            dir_path = clean_path(dir_path)  # 防止小白拷路径头尾带了空格和"和回车
             opt_root = clean_path(opt_root)
             os.makedirs(opt_root, exist_ok=True)
             try:
