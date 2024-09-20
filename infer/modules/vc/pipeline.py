@@ -503,7 +503,7 @@ class Pipeline(object):
                         version,
                         protect,
                         feature_override=feature_override,
-                    )[self.t_pad_tgt : -(self.t_pad_tgt - 2 * self.window)]
+                    )[(self.t_pad_tgt - self.window) : -(self.t_pad_tgt - self.window)]
                 )
             else:
                 audio_opt.append(
@@ -521,7 +521,7 @@ class Pipeline(object):
                         version,
                         protect,
                         feature_override=feature_override,
-                    )[self.t_pad_tgt : -(self.t_pad_tgt - 2 * self.window)]
+                    )[(self.t_pad_tgt - self.window) : -(self.t_pad_tgt - self.window)]
                 )
             s = t
         if if_f0 == 1:
@@ -540,7 +540,7 @@ class Pipeline(object):
                     version,
                     protect,
                     feature_override=feature_override,
-                )[self.t_pad_tgt : -(self.t_pad_tgt - 2 * self.window)]
+                )[(self.t_pad_tgt - self.window) : -(self.t_pad_tgt - self.window)]
             )
         else:
             audio_opt.append(
@@ -558,7 +558,7 @@ class Pipeline(object):
                     version,
                     protect,
                     feature_override=feature_override,
-                )[self.t_pad_tgt : -(self.t_pad_tgt - 2 * self.window)]
+                )[(self.t_pad_tgt - self.window) : -(self.t_pad_tgt - self.window)]
             )
         audio_opt = np.concatenate(audio_opt)
         if rms_mix_rate != 1:
