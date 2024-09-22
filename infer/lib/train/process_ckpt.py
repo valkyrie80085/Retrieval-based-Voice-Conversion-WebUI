@@ -9,13 +9,14 @@ from i18n.i18n import I18nAuto
 
 i18n = I18nAuto()
 
+SKIP_ENC_Q = True
 
 def savee(ckpt, sr, if_f0, name, epoch, version, hps):
     try:
         opt = OrderedDict()
         opt["weight"] = {}
         for key in ckpt.keys():
-            if "enc_q" in key:
+            if SKIP_ENC_Q and "enc_q" in key:
                 continue
             opt["weight"][key] = ckpt[key].half()
         opt["config"] = [
@@ -70,7 +71,7 @@ def extract_small_model(path, name, sr, if_f0, info, version):
         opt = OrderedDict()
         opt["weight"] = {}
         for key in ckpt.keys():
-            if "enc_q" in key:
+            if SKIP_ENC_Q and "enc_q" in key:
                 continue
             opt["weight"][key] = ckpt[key].half()
         if sr == "40k":
