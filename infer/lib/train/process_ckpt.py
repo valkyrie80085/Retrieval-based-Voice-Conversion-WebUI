@@ -15,8 +15,8 @@ def savee(ckpt, sr, if_f0, name, epoch, version, hps):
         opt = OrderedDict()
         opt["weight"] = {}
         for key in ckpt.keys():
-#            if "enc_q" in key:
-#                continue
+            if "enc_q" in key:
+                continue
             opt["weight"][key] = ckpt[key].half()
         opt["config"] = [
             hps.data.filter_length // 2 + 1,
@@ -70,8 +70,8 @@ def extract_small_model(path, name, sr, if_f0, info, version):
         opt = OrderedDict()
         opt["weight"] = {}
         for key in ckpt.keys():
-#            if "enc_q" in key:
-#                continue
+            if "enc_q" in key:
+                continue
             opt["weight"][key] = ckpt[key].half()
         if sr == "40k":
             opt["config"] = [
