@@ -15,8 +15,8 @@ def savee(ckpt, sr, if_f0, name, epoch, version, hps):
         opt = OrderedDict()
         opt["weight"] = {}
         for key in ckpt.keys():
-            if "enc_q" in key:
-                continue
+#            if "enc_q" in key:
+#                continue
             opt["weight"][key] = ckpt[key].half()
         opt["config"] = [
             hps.data.filter_length // 2 + 1,
@@ -38,7 +38,8 @@ def savee(ckpt, sr, if_f0, name, epoch, version, hps):
             hps.model.gin_channels,
             hps.data.sampling_rate,
         ]
-        opt["info"] = "%sepoch" % epoch
+        opt["info"] = "trained by matthew99"
+        print(opt["info"])
         opt["sr"] = sr
         opt["f0"] = if_f0
         opt["version"] = version
@@ -69,8 +70,8 @@ def extract_small_model(path, name, sr, if_f0, info, version):
         opt = OrderedDict()
         opt["weight"] = {}
         for key in ckpt.keys():
-            if "enc_q" in key:
-                continue
+#            if "enc_q" in key:
+#                continue
             opt["weight"][key] = ckpt[key].half()
         if sr == "40k":
             opt["config"] = [
@@ -180,7 +181,7 @@ def extract_small_model(path, name, sr, if_f0, info, version):
                     32000,
                 ]
         if info == "":
-            info = "Extracted model."
+            info = "trained by matthew99."
         opt["info"] = info
         opt["version"] = version
         opt["sr"] = sr

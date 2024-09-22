@@ -22,6 +22,8 @@ from scipy import signal
 from pyloudnorm.iirfilter import IIRfilter
 
 from infer.lib.audio import extract_features_simple, extract_features_simple_segment
+from infer.lib.train.mel_processing import spectrogram_torch
+from infer.lib.train.utils import load_wav_to_torch
 
 now_dir = os.getcwd()
 sys.path.append(now_dir)
@@ -272,75 +274,90 @@ class Pipeline(object):
         version,
         protect,
         feature_override=None,
+        spec=None,
     ):  # ,file_index,file_big_npy
         t0 = ttime()
-        feats = extract_features_simple_segment(
-            audio0,
-            model=model,
-            version=version,
-            device=self.device,
-            is_half=self.is_half,
-        )
-        if pitch is not None and pitchf is not None:
-            feats0 = feats.clone()
-            feats_indexed = feats.clone()
-        if not isinstance(index, type(None)) and not isinstance(big_npy, type(None)):
-            npy = feats[0].cpu().numpy()
-            if self.is_half:
-                npy = npy.astype("float32")
-
-            # _, I = index.search(npy, 1)
-            # npy = big_npy[I.squeeze()]
-
-            score, ix = index.search(npy, k=8)
-            weight = np.square(1 / score)
-            weight /= weight.sum(axis=1, keepdims=True)
-            npy = np.sum(big_npy[ix] * np.expand_dims(weight, axis=2), axis=1)
-
-            if self.is_half:
-                npy = npy.astype("float16")
-            feats_indexed = torch.from_numpy(npy).unsqueeze(0).to(self.device)
-            feats = feats_indexed * index_rate + (1 - index_rate) * feats
-
-        feats = F.interpolate(feats.permute(0, 2, 1), scale_factor=2).permute(0, 2, 1)
-        if pitch is not None and pitchf is not None:
-            feats0 = F.interpolate(feats0.permute(0, 2, 1), scale_factor=2).permute(
-                0, 2, 1
+        if spec is not None:
+            t1 = ttime()
+            with torch.no_grad():
+                if self.is_half:
+                    spec = spec.half()
+                else:
+                    spec = spec.float()
+                spec = spec.to(self.device)
+                len_spec = torch.LongTensor(1).to(self.device)
+                len_spec[0] = spec.shape[-1]
+                audio1 = (net_g.infer(None, None, None, pitchf, sid, y=spec.unsqueeze(0), y_lengths=len_spec)[0][0, 0]).data.cpu().float().numpy()
+                del spec
+                del len_spec
+        else:
+            feats = extract_features_simple_segment(
+                audio0,
+                model=model,
+                version=version,
+                device=self.device,
+                is_half=self.is_half,
             )
-            feats_indexed = F.interpolate(
-                feats_indexed.permute(0, 2, 1), scale_factor=2
-            ).permute(0, 2, 1)
-        t1 = ttime()
-        p_len = audio0.shape[0] // self.window
-        if feats.shape[1] < p_len:
-            p_len = feats.shape[1]
             if pitch is not None and pitchf is not None:
-                pitch = pitch[:, :p_len]
-                pitchf = pitchf[:, :p_len]
+                feats0 = feats.clone()
+                feats_indexed = feats.clone()
+            if not isinstance(index, type(None)) and not isinstance(big_npy, type(None)):
+                npy = feats[0].cpu().numpy()
+                if self.is_half:
+                    npy = npy.astype("float32")
 
-        if (
-            pitch is not None
-            and pitchf is not None
-            and not isinstance(index, type(None))
-            and not isinstance(big_npy, type(None))
-        ):
-            pitchff = pitchf.clone()
-            pitchff[pitchf > 0] = 1
-            pitchff[pitchf < 1] = 0
-            pitchff = pitchff.unsqueeze(-1)
-            feats = feats * pitchff + (
-                feats0 * (1 - protect) + feats_indexed * protect
-            ) * (1 - pitchff)
-            feats = feats.to(feats0.dtype)
-        if feature_override is not None:
-            feats[:, :] = feature_override
-        p_len = torch.tensor([p_len], device=self.device).long()
-        with torch.no_grad():
-            hasp = pitch is not None and pitchf is not None
-            arg = (feats, p_len, pitch, pitchf, sid) if hasp else (feats, p_len, sid)
-            audio1 = (net_g.infer(*arg)[0][0, 0]).data.cpu().float().numpy()
-            del hasp, arg
-        del feats, p_len
+                # _, I = index.search(npy, 1)
+                # npy = big_npy[I.squeeze()]
+
+                score, ix = index.search(npy, k=8)
+                weight = np.square(1 / score)
+                weight /= weight.sum(axis=1, keepdims=True)
+                npy = np.sum(big_npy[ix] * np.expand_dims(weight, axis=2), axis=1)
+
+                if self.is_half:
+                    npy = npy.astype("float16")
+                feats_indexed = torch.from_numpy(npy).unsqueeze(0).to(self.device)
+                feats = feats_indexed * index_rate + (1 - index_rate) * feats
+
+            feats = F.interpolate(feats.permute(0, 2, 1), scale_factor=2).permute(0, 2, 1)
+            if pitch is not None and pitchf is not None:
+                feats0 = F.interpolate(feats0.permute(0, 2, 1), scale_factor=2).permute(
+                    0, 2, 1
+                )
+                feats_indexed = F.interpolate(
+                    feats_indexed.permute(0, 2, 1), scale_factor=2
+                ).permute(0, 2, 1)
+            t1 = ttime()
+            p_len = audio0.shape[0] // self.window
+            if feats.shape[1] < p_len:
+                p_len = feats.shape[1]
+                if pitch is not None and pitchf is not None:
+                    pitch = pitch[:, :p_len]
+                    pitchf = pitchf[:, :p_len]
+
+            if (
+                pitch is not None
+                and pitchf is not None
+                and not isinstance(index, type(None))
+                and not isinstance(big_npy, type(None))
+            ):
+                pitchff = pitchf.clone()
+                pitchff[pitchf > 0] = 1
+                pitchff[pitchf < 1] = 0
+                pitchff = pitchff.unsqueeze(-1)
+                feats = feats * pitchff + (
+                    feats0 * (1 - protect) + feats_indexed * protect
+                ) * (1 - pitchff)
+                feats = feats.to(feats0.dtype)
+            if feature_override is not None:
+                feats[:, :] = feature_override
+            p_len = torch.tensor([p_len], device=self.device).long()
+            with torch.no_grad():
+                hasp = pitch is not None and pitchf is not None
+                arg = (feats, p_len, pitch, pitchf, sid) if hasp else (feats, p_len, sid)
+                audio1 = (net_g.infer(*arg)[0][0, 0]).data.cpu().float().numpy()
+                del hasp, arg
+            del feats, p_len
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         elif torch.backends.mps.is_available():
@@ -375,6 +392,7 @@ class Pipeline(object):
         x_center_override=None,
         f0_file=None,
         f0_npy_path="",
+        audio_40k=False
     ):
         if (
             file_index != ""
@@ -442,13 +460,16 @@ class Pipeline(object):
                 )
         s = 0
         audio_opt = []
-        t = None
+        t = 0
         t1 = ttime()
         audio_pad = np.pad(audio, (self.t_pad, self.t_pad), mode="reflect")
         if feature_audio is not None:
             feature_audio_pad = np.pad(
                 feature_audio, (self.t_pad, self.t_pad), mode="reflect"
             )
+        if audio_40k is not None:    
+            t_pad_40k = round(self.t_pad * len(audio_40k) / len(audio))
+            audio_40k = np.pad(audio_40k, (t_pad_40k, t_pad_40k), mode="reflect")
         p_len = audio_pad.shape[0] // self.window
         inp_f0 = None
         if hasattr(f0_file, "name"):
@@ -481,6 +502,22 @@ class Pipeline(object):
                 pitchf = pitchf.astype(np.float32)
             pitch = torch.tensor(pitch, device=self.device).unsqueeze(0).long()
             pitchf = torch.tensor(pitchf, device=self.device).unsqueeze(0).float()
+        if audio_40k is not None:    
+            audio_40k_torch = torch.FloatTensor(audio_40k.astype(np.float32)).unsqueeze(0)
+            spec = spectrogram_torch(
+                audio_40k_torch,
+                2048,
+                40000,
+                400,
+                2048,
+                center=False,
+            )
+            spec = torch.squeeze(spec, 0)
+            if spec.shape[-1] > p_len:
+                spec = spec[..., :p_len]
+            else:
+                spec_pad = p_len - spec.shape[-1]
+                spec = F.pad(spec, (0, spec_pad))
         if feature_audio is not None and not if_feature_average:
             audio, audio_pad = feature_audio, feature_audio_pad
         t2 = ttime()
@@ -488,6 +525,10 @@ class Pipeline(object):
         for t in opt_ts:
             t = t // self.window * self.window
             if if_f0 == 1:
+                if audio_40k is not None:    
+                    spec_slice = spec[..., s // self.window : (t + self.t_pad2) // self.window]
+                else:
+                    spec_slice = None
                 audio_opt.append(
                     self.vc(
                         model,
@@ -503,6 +544,7 @@ class Pipeline(object):
                         version,
                         protect,
                         feature_override=feature_override,
+                        spec=spec_slice
                     )[(self.t_pad_tgt - self.window) : -(self.t_pad_tgt - self.window)]
                 )
             else:
@@ -525,14 +567,18 @@ class Pipeline(object):
                 )
             s = t
         if if_f0 == 1:
+            if audio_40k is not None:    
+                spec_slice = spec[..., t // self.window : ]
+            else:
+                spec_slice = None
             audio_opt.append(
                 self.vc(
                     model,
                     net_g,
                     sid,
                     audio_pad[t:],
-                    pitch[:, t // self.window :] if t is not None else pitch,
-                    pitchf[:, t // self.window :] if t is not None else pitchf,
+                    pitch[:, t // self.window :],
+                    pitchf[:, t // self.window :],
                     times,
                     index,
                     big_npy,
@@ -540,6 +586,7 @@ class Pipeline(object):
                     version,
                     protect,
                     feature_override=feature_override,
+                    spec=spec_slice
                 )[(self.t_pad_tgt - self.window) : -(self.t_pad_tgt - self.window)]
             )
         else:

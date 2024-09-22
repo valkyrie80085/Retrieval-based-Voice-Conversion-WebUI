@@ -20,6 +20,7 @@ from infer.modules.vc.utils import *
 
 import os, time
 
+ENC_Q = False
 
 class VC:
     def __init__(self, config):
@@ -115,7 +116,8 @@ class VC:
             (self.version, self.if_f0), SynthesizerTrnMs256NSFsid
         )(*self.cpt["config"], is_half=self.config.is_half)
 
-        del self.net_g.enc_q
+        if not ENC_Q:
+            del self.net_g.enc_q
 
         self.net_g.load_state_dict(self.cpt["weight"], strict=False)
         self.net_g.eval().to(self.config.device)
@@ -250,6 +252,13 @@ class VC:
             audio_max = np.abs(audio).max() / 0.95
             if audio_max > 1:
                 audio /= audio_max
+            if ENC_Q:
+                audio_40k = load_audio(input_audio_path, 40000)
+                audio_40k_max = np.abs(audio_40k).max() / 0.95
+                if audio_40k_max > 1:
+                    audio_40k /= audio_40k_max
+            else:
+                audio_40k = None
 
             if feature_audio_path != "":
                 feature_audio = load_audio(feature_audio_path, 16000)
@@ -302,6 +311,7 @@ class VC:
                 if_feature_average=if_feature_average,
                 x_center_override=segment_length,
                 f0_npy_path=f0_npy_path,
+                audio_40k=audio_40k
             )
             if self.tgt_sr != resample_sr >= 16000:
                 tgt_sr = resample_sr
