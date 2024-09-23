@@ -287,17 +287,15 @@ class Pipeline(object):
                 spec = spec.to(self.device)
                 len_spec = torch.LongTensor(1).to(self.device)
                 len_spec[0] = spec.shape[-1]
+                z, x_mask = net_g.get_features_q(sid, spec, len_spec)
                 audio1 = (
                     (
-                        net_g.infer(
-                            None,
-                            None,
-                            None,
-                            pitchf,
+                        net_g.infer_from_features(
                             sid,
-                            y=spec.unsqueeze(0),
-                            y_lengths=len_spec,
-                        )[0][0, 0]
+                            pitchf,
+                            z,
+                            x_mask,
+                        )[0, 0]
                     )
                     .data.cpu()
                     .float()
@@ -376,6 +374,8 @@ class Pipeline(object):
                     (feats, p_len, pitch, pitchf, sid) if hasp else (feats, p_len, sid)
                 )
                 audio1 = (net_g.infer(*arg)[0][0, 0]).data.cpu().float().numpy()
+
+                z = net_g.get_features(sid, 
                 del hasp, arg
             del feats, p_len
         if torch.cuda.is_available():

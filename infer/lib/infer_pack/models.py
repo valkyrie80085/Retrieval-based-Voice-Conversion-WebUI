@@ -768,8 +768,8 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
     def get_features_q(
         self,
         sid: torch.Tensor,
-        y: Optional[torch.Tensor] = None,
-        y_lengths: Optional[torch.Tensor] = None,
+        y: torch.Tensor,
+        y_lengths: torch.Tensor,
     ):
         g = self.emb_g(sid).unsqueeze(-1)
         z, _, __, y_mask = self.enc_q(y, y_lengths, g=g, noise=False)
@@ -782,30 +782,14 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         phone_lengths: torch.Tensor,
         pitch: torch.Tensor,
         sid: torch.Tensor,
-        skip_head: Optional[torch.Tensor] = None,
-        return_length: Optional[torch.Tensor] = None,
-        return_length2: Optional[torch.Tensor] = None,
     ):
         g = self.emb_g(sid).unsqueeze(-1)
-        if skip_head is not None and return_length is not None:
-            assert isinstance(skip_head, torch.Tensor)
-            assert isinstance(return_length, torch.Tensor)
-            head = int(skip_head.item())
-            length = int(return_length.item())
-            flow_head = torch.clamp(skip_head - 24, min=0)
-            dec_head = head - int(flow_head.item())
-            m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths, flow_head)
-            z_p = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
-            z = self.flow(z_p, x_mask, g=g, reverse=True)
-            z = z[:, :, dec_head : dec_head + length]
-            x_mask = x_mask[:, :, dec_head : dec_head + length]
-        else:
-            m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
-            z_p = (
-                m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666
-            ) * x_mask
-            z = self.flow(z_p, x_mask, g=g, reverse=True)
-        return z
+        m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
+        z_p = (
+            m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666
+        ) * x_mask
+        z = self.flow(z_p, x_mask, g=g, reverse=True)
+        return z, x_mask
 
     @torch.jit.export
     def infer_from_features(
@@ -830,8 +814,6 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         skip_head: Optional[torch.Tensor] = None,
         return_length: Optional[torch.Tensor] = None,
         return_length2: Optional[torch.Tensor] = None,
-        y: Optional[torch.Tensor] = None,
-        y_lengths: Optional[torch.Tensor] = None,
     ):
         g = self.emb_g(sid).unsqueeze(-1)
         if skip_head is not None and return_length is not None:
@@ -848,15 +830,11 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
             x_mask = x_mask[:, :, dec_head : dec_head + length]
             nsff0 = nsff0[:, head : head + length]
         else:
-            if y is not None and y_lengths is not None:
-                z, _, logs_q, y_mask = self.enc_q(y, y_lengths, g=g)
-                x_mask, z_p, m_p, logs_p = y_mask, None, None, None
-            else:
-                m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
-                z_p = (
-                    m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666
-                ) * x_mask
-                z = self.flow(z_p, x_mask, g=g, reverse=True)
+            m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
+            z_p = (
+                m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666
+            ) * x_mask
+            z = self.flow(z_p, x_mask, g=g, reverse=True)
         o = self.dec(z * x_mask, nsff0, g=g, n_res=return_length2)
         return o, x_mask, (z, z_p, m_p, logs_p)
 
