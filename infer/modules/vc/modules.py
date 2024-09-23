@@ -17,6 +17,7 @@ from infer.lib.infer_pack.models import (
 )
 from infer.modules.vc.pipeline import Pipeline
 from infer.modules.vc.utils import *
+from infer.lib.train.mel_processing import spectrogram_torch
 
 import os, time
 
@@ -37,7 +38,7 @@ class VC:
 
         self.config = config
 
-    def get_vc(self, sid, *to_return_protect):
+    def get_vc(self, sid, keep_enc_q=ENC_Q, *to_return_protect):
         logger.info("Get sid: " + sid)
 
         to_return_protect0 = {
@@ -97,7 +98,10 @@ class VC:
                 "",
                 "",
             )
-        person = f'{os.getenv("weight_root")}/{sid}'
+        if os.getenv("weight_root") is not None:
+            person = f'{os.getenv("weight_root")}/{sid}'
+        else:
+            person = sid
         logger.info(f"Loading: {person}")
 
         self.cpt = torch.load(person, map_location="cpu")
@@ -117,7 +121,7 @@ class VC:
             (self.version, self.if_f0), SynthesizerTrnMs256NSFsid
         )(*self.cpt["config"], is_half=self.config.is_half)
 
-        if not ENC_Q:
+        if not keep_enc_q:
             del self.net_g.enc_q
 
         self.net_g.load_state_dict(self.cpt["weight"], strict=False)
@@ -129,7 +133,10 @@ class VC:
 
         self.pipeline = Pipeline(self.tgt_sr, self.config)
         n_spk = self.cpt["config"][-3]
-        index = {"value": get_index_path_from_model(sid), "__type__": "update"}
+        try:
+            index = {"value": get_index_path_from_model(sid), "__type__": "update"}
+        except:
+            index = {"value": "", "__type__": "update"}
         logger.info("Select index: " + index["value"])
 
         return (
@@ -143,6 +150,49 @@ class VC:
             if to_return_protect
             else {"visible": True, "maximum": n_spk, "__type__": "update"}
         )
+
+    def get_features(
+        self,
+        sid,
+        input_audio_path,
+    ):
+        input_audio_path = clean_path(
+            input_audio_path
+        )
+        audio_40k = load_audio(input_audio_path, 40000)
+        audio_40k_max = np.abs(audio_40k).max() / 0.95
+        if audio_40k_max > 1:
+            audio_40k /= audio_40k_max
+        audio_40k_torch = torch.FloatTensor(audio_40k.astype(np.float32)).unsqueeze(
+            0
+        )
+        spec = spectrogram_torch(
+            audio_40k_torch,
+            2048,
+            40000,
+            400,
+            2048,
+            center=False,
+        )
+        spec = torch.squeeze(spec, 0)
+        if self.config.is_half:
+            spec = spec.half()
+        else:
+            spec = spec.float()
+        sid = torch.tensor(sid, device=self.config.device).unsqueeze(0).long()
+        spec = spec.to(self.config.device)
+        len_spec = torch.LongTensor(1).to(self.config.device)
+        len_spec[0] = spec.shape[-1]
+        feats = self.net_g.get_features(
+                sid,
+                y=spec.unsqueeze(0),
+                y_lengths=len_spec,
+        ).data.squeeze(0)
+        feats = feats[:, :spec.shape[-1]]
+        del sid, spec, len_spec
+        feats = feats.transpose(0, 1)
+        feats = feats.cpu().float().numpy()
+        return feats
 
     def vc_single(
         self,

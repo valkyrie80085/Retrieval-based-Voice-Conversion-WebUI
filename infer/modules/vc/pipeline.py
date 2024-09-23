@@ -303,8 +303,7 @@ class Pipeline(object):
                     .float()
                     .numpy()
                 )
-                del spec
-                del len_spec
+                del spec, len_spec
         else:
             feats = extract_features_simple_segment(
                 audio0,

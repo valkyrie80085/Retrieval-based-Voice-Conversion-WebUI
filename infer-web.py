@@ -714,7 +714,7 @@ def click_train(
 
 
 # but4.click(train_index, [exp_dir1], info3)
-def train_index(exp_dir1, version19, extended=False):
+def train_index(exp_dir1, version19, cluster=False, extended=False):
     # exp_dir = "%s/logs/%s" % (now_dir, exp_dir1)
     exp_dir = "logs/%s" % (exp_dir1)
     os.makedirs(exp_dir, exist_ok=True)
@@ -743,7 +743,7 @@ def train_index(exp_dir1, version19, extended=False):
     big_npy_idx = np.arange(big_npy.shape[0])
     np.random.shuffle(big_npy_idx)
     big_npy = big_npy[big_npy_idx]
-    if (False and big_npy.shape[0] > 2e5) or (extended and big_npy.shape[0] > 1e4):
+    if (cluster and big_npy.shape[0] > 2e5) or (extended and big_npy.shape[0] > 1e4):
         infos.append("Trying doing kmeans %s shape to 10k centers." % big_npy.shape[0])
         #        yield "\n".join(infos)
         try:

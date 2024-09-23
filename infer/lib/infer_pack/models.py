@@ -762,6 +762,17 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         return o, ids_slice, x_mask, y_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
 
     @torch.jit.export
+    def get_features(
+        self,
+        sid: torch.Tensor,
+        y: Optional[torch.Tensor] = None,
+        y_lengths: Optional[torch.Tensor] = None,
+    ):
+        g = self.emb_g(sid).unsqueeze(-1)
+        z, _, __, ___ = self.enc_q(y, y_lengths, g=g)
+        return z
+
+    @torch.jit.export
     def infer(
         self,
         phone: torch.Tensor,
