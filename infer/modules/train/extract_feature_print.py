@@ -29,7 +29,9 @@ sys.path.append(now_dir)
 from infer.lib.audio import load_audio
 from infer.lib.audio import extract_features_new
 
-index_file = None  # "D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/logs/ipa/added_IVF521_Flat_nprobe_1_ipa_v2.index"
+GET_EXTENDED_FEATURES = False
+
+index_file = None
 if index_file is not None:
     import faiss
 
@@ -159,7 +161,7 @@ else:
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)
-                    if "(" not in file:
+                    if GET_EXTENDED_FEATURES and "(" not in file:
                         f0 = model_rmvpe.infer_from_audio(audio, thred=0.03)
                         pd = np.ones_like(f0)
                         pd[f0 < 0.001] = 0
