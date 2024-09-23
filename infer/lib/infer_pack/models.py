@@ -176,7 +176,7 @@ class PosteriorEncoder(nn.Module):
         self.proj = nn.Conv1d(hidden_channels, out_channels * 2, 1)
 
     def forward(
-        self, x: torch.Tensor, x_lengths: torch.Tensor, g: Optional[torch.Tensor] = None
+        self, x: torch.Tensor, x_lengths: torch.Tensor, g: Optional[torch.Tensor] = None, noise=True
     ):
         x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)), 1).to(
             x.dtype
@@ -185,7 +185,10 @@ class PosteriorEncoder(nn.Module):
         x = self.enc(x, x_mask, g=g)
         stats = self.proj(x) * x_mask
         m, logs = torch.split(stats, self.out_channels, dim=1)
-        z = (m + torch.randn_like(m) * torch.exp(logs)) * x_mask
+        if noise:
+            z = (m + torch.randn_like(m) * torch.exp(logs)) * x_mask
+        else:
+            z = m * x_mask
         return z, m, logs, x_mask
 
     def remove_weight_norm(self):
@@ -762,15 +765,59 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         return o, ids_slice, x_mask, y_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
 
     @torch.jit.export
-    def get_features(
+    def get_features_q(
         self,
         sid: torch.Tensor,
         y: Optional[torch.Tensor] = None,
         y_lengths: Optional[torch.Tensor] = None,
     ):
         g = self.emb_g(sid).unsqueeze(-1)
-        z, _, __, ___ = self.enc_q(y, y_lengths, g=g)
+        z, _, __, y_mask = self.enc_q(y, y_lengths, g=g, noise=False)
+        return z, y_mask
+
+    @torch.jit.export
+    def get_features_p(
+        self,
+        phone: torch.Tensor,
+        phone_lengths: torch.Tensor,
+        pitch: torch.Tensor,
+        sid: torch.Tensor,
+        skip_head: Optional[torch.Tensor] = None,
+        return_length: Optional[torch.Tensor] = None,
+        return_length2: Optional[torch.Tensor] = None,
+    ):
+        g = self.emb_g(sid).unsqueeze(-1)
+        if skip_head is not None and return_length is not None:
+            assert isinstance(skip_head, torch.Tensor)
+            assert isinstance(return_length, torch.Tensor)
+            head = int(skip_head.item())
+            length = int(return_length.item())
+            flow_head = torch.clamp(skip_head - 24, min=0)
+            dec_head = head - int(flow_head.item())
+            m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths, flow_head)
+            z_p = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
+            z = self.flow(z_p, x_mask, g=g, reverse=True)
+            z = z[:, :, dec_head : dec_head + length]
+            x_mask = x_mask[:, :, dec_head : dec_head + length]
+        else:
+            m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
+            z_p = (
+                m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666
+            ) * x_mask
+            z = self.flow(z_p, x_mask, g=g, reverse=True)
         return z
+
+    @torch.jit.export
+    def infer_from_features(
+        self,
+        sid: torch.Tensor,
+        nsff0: torch.Tensor,
+        z: torch.Tensor, 
+        x_mask: torch.Tensor,
+    ):
+        g = self.emb_g(sid).unsqueeze(-1)
+        o = self.dec(z * x_mask, nsff0, g=g)
+        return o
 
     @torch.jit.export
     def infer(

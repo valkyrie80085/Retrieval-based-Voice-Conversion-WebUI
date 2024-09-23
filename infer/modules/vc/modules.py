@@ -183,11 +183,11 @@ class VC:
         spec = spec.to(self.config.device)
         len_spec = torch.LongTensor(1).to(self.config.device)
         len_spec[0] = spec.shape[-1]
-        feats = self.net_g.get_features(
+        feats = self.net_g.get_features_q(
                 sid,
                 y=spec.unsqueeze(0),
                 y_lengths=len_spec,
-        ).data.squeeze(0)
+        )[0].data.squeeze(0)
         feats = feats[:, :spec.shape[-1]]
         del sid, spec, len_spec
         feats = feats.transpose(0, 1)

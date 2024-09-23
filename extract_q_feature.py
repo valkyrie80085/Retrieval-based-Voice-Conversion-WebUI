@@ -73,9 +73,6 @@ else:
                 wav_path = "%s/%s" % (wavPath, file)
                 out_path = "%s/%s" % (outPath, file.replace("wav", "npy"))
 
-                if os.path.exists(out_path):
-                    continue
-
                 feats = vc.get_features(0, wav_path)
 
                 if np.isnan(feats).sum() == 0:
