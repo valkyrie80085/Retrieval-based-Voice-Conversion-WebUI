@@ -22,6 +22,7 @@ import os, time
 
 ENC_Q = False
 
+
 class VC:
     def __init__(self, config):
         self.n_spk = None
@@ -311,7 +312,7 @@ class VC:
                 if_feature_average=if_feature_average,
                 x_center_override=segment_length,
                 f0_npy_path=f0_npy_path,
-                audio_40k=audio_40k
+                audio_40k=audio_40k,
             )
             if self.tgt_sr != resample_sr >= 16000:
                 tgt_sr = resample_sr

@@ -287,7 +287,22 @@ class Pipeline(object):
                 spec = spec.to(self.device)
                 len_spec = torch.LongTensor(1).to(self.device)
                 len_spec[0] = spec.shape[-1]
-                audio1 = (net_g.infer(None, None, None, pitchf, sid, y=spec.unsqueeze(0), y_lengths=len_spec)[0][0, 0]).data.cpu().float().numpy()
+                audio1 = (
+                    (
+                        net_g.infer(
+                            None,
+                            None,
+                            None,
+                            pitchf,
+                            sid,
+                            y=spec.unsqueeze(0),
+                            y_lengths=len_spec,
+                        )[0][0, 0]
+                    )
+                    .data.cpu()
+                    .float()
+                    .numpy()
+                )
                 del spec
                 del len_spec
         else:
@@ -301,7 +316,9 @@ class Pipeline(object):
             if pitch is not None and pitchf is not None:
                 feats0 = feats.clone()
                 feats_indexed = feats.clone()
-            if not isinstance(index, type(None)) and not isinstance(big_npy, type(None)):
+            if not isinstance(index, type(None)) and not isinstance(
+                big_npy, type(None)
+            ):
                 npy = feats[0].cpu().numpy()
                 if self.is_half:
                     npy = npy.astype("float32")
@@ -319,7 +336,9 @@ class Pipeline(object):
                 feats_indexed = torch.from_numpy(npy).unsqueeze(0).to(self.device)
                 feats = feats_indexed * index_rate + (1 - index_rate) * feats
 
-            feats = F.interpolate(feats.permute(0, 2, 1), scale_factor=2).permute(0, 2, 1)
+            feats = F.interpolate(feats.permute(0, 2, 1), scale_factor=2).permute(
+                0, 2, 1
+            )
             if pitch is not None and pitchf is not None:
                 feats0 = F.interpolate(feats0.permute(0, 2, 1), scale_factor=2).permute(
                     0, 2, 1
@@ -354,7 +373,9 @@ class Pipeline(object):
             p_len = torch.tensor([p_len], device=self.device).long()
             with torch.no_grad():
                 hasp = pitch is not None and pitchf is not None
-                arg = (feats, p_len, pitch, pitchf, sid) if hasp else (feats, p_len, sid)
+                arg = (
+                    (feats, p_len, pitch, pitchf, sid) if hasp else (feats, p_len, sid)
+                )
                 audio1 = (net_g.infer(*arg)[0][0, 0]).data.cpu().float().numpy()
                 del hasp, arg
             del feats, p_len
@@ -392,7 +413,7 @@ class Pipeline(object):
         x_center_override=None,
         f0_file=None,
         f0_npy_path="",
-        audio_40k=False
+        audio_40k=False,
     ):
         if (
             file_index != ""
@@ -467,7 +488,7 @@ class Pipeline(object):
             feature_audio_pad = np.pad(
                 feature_audio, (self.t_pad, self.t_pad), mode="reflect"
             )
-        if audio_40k is not None:    
+        if audio_40k is not None:
             t_pad_40k = round(self.t_pad * len(audio_40k) / len(audio))
             audio_40k = np.pad(audio_40k, (t_pad_40k, t_pad_40k), mode="reflect")
         p_len = audio_pad.shape[0] // self.window
@@ -502,8 +523,10 @@ class Pipeline(object):
                 pitchf = pitchf.astype(np.float32)
             pitch = torch.tensor(pitch, device=self.device).unsqueeze(0).long()
             pitchf = torch.tensor(pitchf, device=self.device).unsqueeze(0).float()
-        if audio_40k is not None:    
-            audio_40k_torch = torch.FloatTensor(audio_40k.astype(np.float32)).unsqueeze(0)
+        if audio_40k is not None:
+            audio_40k_torch = torch.FloatTensor(audio_40k.astype(np.float32)).unsqueeze(
+                0
+            )
             spec = spectrogram_torch(
                 audio_40k_torch,
                 2048,
@@ -525,8 +548,10 @@ class Pipeline(object):
         for t in opt_ts:
             t = t // self.window * self.window
             if if_f0 == 1:
-                if audio_40k is not None:    
-                    spec_slice = spec[..., s // self.window : (t + self.t_pad2) // self.window]
+                if audio_40k is not None:
+                    spec_slice = spec[
+                        ..., s // self.window : (t + self.t_pad2) // self.window
+                    ]
                 else:
                     spec_slice = None
                 audio_opt.append(
@@ -544,7 +569,7 @@ class Pipeline(object):
                         version,
                         protect,
                         feature_override=feature_override,
-                        spec=spec_slice
+                        spec=spec_slice,
                     )[(self.t_pad_tgt - self.window) : -(self.t_pad_tgt - self.window)]
                 )
             else:
@@ -567,8 +592,8 @@ class Pipeline(object):
                 )
             s = t
         if if_f0 == 1:
-            if audio_40k is not None:    
-                spec_slice = spec[..., t // self.window : ]
+            if audio_40k is not None:
+                spec_slice = spec[..., t // self.window :]
             else:
                 spec_slice = None
             audio_opt.append(
@@ -586,7 +611,7 @@ class Pipeline(object):
                     version,
                     protect,
                     feature_override=feature_override,
-                    spec=spec_slice
+                    spec=spec_slice,
                 )[(self.t_pad_tgt - self.window) : -(self.t_pad_tgt - self.window)]
             )
         else:
