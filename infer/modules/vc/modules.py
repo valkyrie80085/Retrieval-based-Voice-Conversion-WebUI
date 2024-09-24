@@ -152,7 +152,7 @@ class VC:
             else {"visible": True, "maximum": n_spk, "__type__": "update"}
         )
 
-    def get_features(
+    def get_hidden_features(
         self,
         sid,
         input_audio_path,
@@ -184,7 +184,7 @@ class VC:
         spec = spec.to(self.config.device)
         len_spec = torch.LongTensor(1).to(self.config.device)
         len_spec[0] = spec.shape[-1]
-        feats = self.net_g.get_features_q(
+        feats = self.net_g.get_hidden_features_q(
                 sid,
                 y=spec.unsqueeze(0),
                 y_lengths=len_spec,

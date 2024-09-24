@@ -74,7 +74,7 @@ else:
                 wav_path = "%s/%s" % (wavPath, file)
                 out_path = "%s/%s" % (outPath, file.replace("wav", "npy"))
 
-                feats = vc.get_features(0, wav_path)
+                feats = vc.get_hidden_features(0, wav_path)
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)

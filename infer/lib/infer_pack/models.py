@@ -765,7 +765,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         return o, ids_slice, x_mask, y_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
 
     @torch.jit.export
-    def get_features_q(
+    def get_hidden_features_q(
         self,
         sid: torch.Tensor,
         y: torch.Tensor,
@@ -776,7 +776,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         return z, y_mask
 
     @torch.jit.export
-    def get_features_p(
+    def get_hidden_features_p(
         self,
         phone: torch.Tensor,
         phone_lengths: torch.Tensor,
@@ -792,7 +792,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         return z, x_mask
 
     @torch.jit.export
-    def infer_from_features(
+    def infer_from_hidden_features(
         self,
         sid: torch.Tensor,
         nsff0: torch.Tensor,

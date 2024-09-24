@@ -287,10 +287,10 @@ class Pipeline(object):
                 spec = spec.to(self.device)
                 len_spec = torch.LongTensor(1).to(self.device)
                 len_spec[0] = spec.shape[-1]
-                z, x_mask = net_g.get_features_q(sid, spec, len_spec)
+                z, x_mask = net_g.get_hidden_features_q(sid, spec, len_spec)
                 audio1 = (
                     (
-                        net_g.infer_from_features(
+                        net_g.infer_from_hidden_features(
                             sid,
                             pitchf,
                             z,
@@ -377,7 +377,7 @@ class Pipeline(object):
                 arg = (
                     (feats, p_len, pitch, pitchf, sid) if hasp else (feats, p_len, sid)
                 )
-                z, x_mask = net_g.get_features_p(feats, p_len, pitch, sid)
+                z, x_mask = net_g.get_hidden_features_p(feats, p_len, pitch, sid)
                 if False:
                     z = z.squeeze(0).transpose(0, 1)
                     npy = z.detach().cpu().float().numpy()
@@ -398,7 +398,7 @@ class Pipeline(object):
                     z = z.transpose(0, 1).unsqueeze(0)
                 audio1 = (
                     (
-                        net_g.infer_from_features(
+                        net_g.infer_from_hidden_features(
                             sid,
                             pitchf,
                             z,
