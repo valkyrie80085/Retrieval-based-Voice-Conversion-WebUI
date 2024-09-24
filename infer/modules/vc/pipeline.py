@@ -316,21 +316,25 @@ class Pipeline(object):
             if not isinstance(index, type(None)) and not isinstance(
                 big_npy, type(None)
             ):
-                npy = feats[0].cpu().numpy()
-                if self.is_half:
-                    npy = npy.astype("float32")
+                try:
+                    npy = feats[0].cpu().numpy()
+                    if self.is_half:
+                        npy = npy.astype("float32")
 
-                # _, I = index.search(npy, 1)
-                # npy = big_npy[I.squeeze()]
+                    # _, I = index.search(npy, 1)
+                    # npy = big_npy[I.squeeze()]
 
-                score, ix = index.search(npy, k=8)
-                weight = np.square(1 / score)
-                weight /= weight.sum(axis=1, keepdims=True)
-                npy = np.sum(big_npy[ix] * np.expand_dims(weight, axis=2), axis=1)
+                    score, ix = index.search(npy, k=8)
+                    weight = np.square(1 / score)
+                    weight /= weight.sum(axis=1, keepdims=True)
+                    npy = np.sum(big_npy[ix] * np.expand_dims(weight, axis=2), axis=1)
 
-                if self.is_half:
-                    npy = npy.astype("float16")
-                feats_indexed = torch.from_numpy(npy).unsqueeze(0).to(self.device)
+                    if self.is_half:
+                        npy = npy.astype("float16")
+                    feats_indexed = torch.from_numpy(npy).unsqueeze(0).to(self.device)
+                except:
+                    print(traceback.format_exc())
+                    feats_indexed = feats.clone()
                 feats = feats_indexed * index_rate + (1 - index_rate) * feats
 
             feats = F.interpolate(feats.permute(0, 2, 1), scale_factor=2).permute(
@@ -373,9 +377,38 @@ class Pipeline(object):
                 arg = (
                     (feats, p_len, pitch, pitchf, sid) if hasp else (feats, p_len, sid)
                 )
-                audio1 = (net_g.infer(*arg)[0][0, 0]).data.cpu().float().numpy()
+                z, x_mask = net_g.get_features_p(feats, p_len, pitch, sid)
+                if False:
+                    z = z.squeeze(0).transpose(0, 1)
+                    npy = z.detach().cpu().float().numpy()
+                    if self.is_half:
+                       npy = npy.astype("float32")
 
-                z = net_g.get_features(sid, 
+                    # _, I = index.search(npy, 1)
+                    # npy = big_npy[I.squeeze()]
+
+                    score, ix = index.search(npy, k=8)
+                    weight = np.square(1 / score)
+                    weight /= weight.sum(axis=1, keepdims=True)
+                    npy = np.sum(big_npy[ix] * np.expand_dims(weight, axis=2), axis=1)
+
+                    if self.is_half:
+                        npy = npy.astype("float16")
+                    z = torch.from_numpy(npy).to(self.device)
+                    z = z.transpose(0, 1).unsqueeze(0)
+                audio1 = (
+                    (
+                        net_g.infer_from_features(
+                            sid,
+                            pitchf,
+                            z,
+                            x_mask,
+                        )[0, 0]
+                    )
+                    .data.cpu()
+                    .float()
+                    .numpy()
+                )
                 del hasp, arg
             del feats, p_len
         if torch.cuda.is_available():
