@@ -35,10 +35,11 @@ class VC:
         self.if_f0 = None
         self.version = None
         self.hubert_model = None
+        self.enc_q = ENC_Q
 
         self.config = config
 
-    def get_vc(self, sid, keep_enc_q=ENC_Q, *to_return_protect):
+    def get_vc(self, sid, *to_return_protect):
         logger.info("Get sid: " + sid)
 
         to_return_protect0 = {
@@ -121,7 +122,7 @@ class VC:
             (self.version, self.if_f0), SynthesizerTrnMs256NSFsid
         )(*self.cpt["config"], is_half=self.config.is_half)
 
-        if not keep_enc_q:
+        if not self.enc_q:
             del self.net_g.enc_q
 
         self.net_g.load_state_dict(self.cpt["weight"], strict=False)

@@ -22,6 +22,7 @@ from infer.modules.vc.modules import VC
 from configs.config import Config
 config = Config()
 vc = VC(config)
+vc.enc_q = True
 vc.get_vc("D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/enc_q.pth", keep_enc_q=True)
 
 if "privateuseone" not in device:
