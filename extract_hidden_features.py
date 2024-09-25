@@ -92,11 +92,13 @@ else:
                 wav_path = "%s/%s" % (wavPath, file)
                 out_path = "%s/%s" % (outPath, file.replace("wav", "npy"))
 
-                feats = vc.get_hidden_features(0, wav_path)
-                f0 = resize_with_zeros(compute_f0(wav_path), feats.shape[0])
-                feats = np.concatenate(
-                    (feats, f0[:, np.newaxis]), axis=1
-                )
+#                feats = vc.get_hidden_features(0, wav_path)
+#                f0 = resize_with_zeros(compute_f0(wav_path), feats.shape[0])
+#                feats = np.concatenate(
+#                    (feats, f0[:, np.newaxis]), axis=1
+#                )
+                feats = np.load(out_path)
+                feats[:, -1] *= 192 ** 0.5
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)

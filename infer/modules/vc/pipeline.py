@@ -378,11 +378,19 @@ class Pipeline(object):
                     (feats, p_len, pitch, pitchf, sid) if hasp else (feats, p_len, sid)
                 )
                 z, x_mask = net_g.get_hidden_features_p(feats, p_len, pitch, sid)
-                if False:
+                if True:
+                    f0_mel = 1127 * np.log(1 + pitchf.squeeze(0).detach().cpu().numpy() / 700)
+                    f0 = (f0_mel - 550) / 120
                     z = z.squeeze(0).transpose(0, 1)
+
                     npy = z.detach().cpu().float().numpy()
                     if self.is_half:
                        npy = npy.astype("float32")
+
+                    npy = np.concatenate(
+                        (npy, f0[:, np.newaxis].astype(npy.dtype)), axis=1
+                    )
+                    npy[:,-1] *= 192 ** 0.5
 
                     # _, I = index.search(npy, 1)
                     # npy = big_npy[I.squeeze()]
@@ -394,6 +402,7 @@ class Pipeline(object):
 
                     if self.is_half:
                         npy = npy.astype("float16")
+                    npy = npy[:, :192]
                     z = torch.from_numpy(npy).to(self.device)
                     z = z.transpose(0, 1).unsqueeze(0)
                 audio1 = (
