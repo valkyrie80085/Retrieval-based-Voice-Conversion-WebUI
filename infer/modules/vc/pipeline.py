@@ -378,7 +378,7 @@ class Pipeline(object):
                     (feats, p_len, pitch, pitchf, sid) if hasp else (feats, p_len, sid)
                 )
                 z, x_mask = net_g.get_hidden_features_p(feats, p_len, pitch, sid)
-                if True:
+                if False:
                     f0_mel = 1127 * np.log(1 + pitchf.squeeze(0).detach().cpu().numpy() / 700)
                     f0 = (f0_mel - 550) / 120
                     z = z.squeeze(0).transpose(0, 1)
