@@ -759,13 +759,8 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
         z, m_q, logs_q, y_mask = self.enc_q(y, y_lengths, g=g)
         z_p = self.flow(z, y_mask, g=g)
-
-        z_p2 = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
-        ratio = torch.rand(1, device=z_p.device)
-        z_p_o = z_p * ratio + z_p2 * (1 - ratio)
-
         z_slice, ids_slice = commons.rand_slice_segments(
-            z_p_o, y_lengths, self.segment_size
+            z, y_lengths, self.segment_size
         )
         # print(-1,pitchf.shape,ids_slice,self.segment_size,self.hop_length,self.segment_size//self.hop_length)
         pitchf = commons.slice_segments2(pitchf, ids_slice, self.segment_size)
