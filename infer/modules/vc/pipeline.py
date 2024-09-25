@@ -379,7 +379,9 @@ class Pipeline(object):
                 )
                 z, x_mask = net_g.get_hidden_features_p(feats, p_len, pitch, sid)
                 if False:
-                    f0_mel = 1127 * np.log(1 + pitchf.squeeze(0).detach().cpu().numpy() / 700)
+                    f0_mel = 1127 * np.log(
+                        1 + pitchf.squeeze(0).detach().cpu().numpy() / 700
+                    )
                     f0 = (f0_mel - 550) / 120
                     z = z.squeeze(0).transpose(0, 1)
 
@@ -390,7 +392,7 @@ class Pipeline(object):
                     npy = np.concatenate(
                         (npy, f0[:, np.newaxis].astype(npy.dtype)), axis=1
                     )
-                    npy[:,-1] *= 192 ** 0.5
+                    npy[:, -1] *= 192**0.5
 
                     # _, I = index.search(npy, 1)
                     # npy = big_npy[I.squeeze()]

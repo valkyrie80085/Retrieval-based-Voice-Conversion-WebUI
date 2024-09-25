@@ -6,7 +6,9 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
 
 device = "cuda"
-exp_dir = "D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test"
+exp_dir = (
+    "D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test"
+)
 import fairseq
 import numpy as np
 import soundfile as sf
@@ -20,6 +22,7 @@ from infer.lib.audio import extract_features_new
 
 from infer.modules.vc.modules import VC
 from configs.config import Config
+
 config = Config()
 vc = VC(config)
 vc.enc_q = True
@@ -55,6 +58,8 @@ def printt(strr):
 
 
 model_rmvpe = None
+
+
 def compute_f0(path):
     print("computing f0 for: " + path)
     x = load_audio(path, 16000)
@@ -75,9 +80,7 @@ model_path = "assets/hubert/hubert_base.pt"
 
 printt("exp_dir: " + exp_dir)
 wavPath = "%s/0_gt_wavs" % exp_dir
-outPath = (
-    "%s/3_feature193" % exp_dir
-)
+outPath = "%s/3_feature193" % exp_dir
 os.makedirs(outPath, exist_ok=True)
 
 todo = sorted(list(os.listdir(wavPath)))
@@ -94,10 +97,8 @@ else:
 
                 feats = vc.get_hidden_features(0, wav_path)
                 f0 = resize_with_zeros(compute_f0(wav_path), feats.shape[0])
-                feats = np.concatenate(
-                    (feats, f0[:, np.newaxis]), axis=1
-                )
-                feats[:, -1] *= 192 ** 0.5
+                feats = np.concatenate((feats, f0[:, np.newaxis]), axis=1)
+                feats[:, -1] *= 192**0.5
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)
