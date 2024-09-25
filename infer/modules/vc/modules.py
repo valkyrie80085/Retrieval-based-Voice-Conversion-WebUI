@@ -157,16 +157,12 @@ class VC:
         sid,
         input_audio_path,
     ):
-        input_audio_path = clean_path(
-            input_audio_path
-        )
+        input_audio_path = clean_path(input_audio_path)
         audio_40k = load_audio(input_audio_path, 40000)
         audio_40k_max = np.abs(audio_40k).max() / 0.95
         if audio_40k_max > 1:
             audio_40k /= audio_40k_max
-        audio_40k_torch = torch.FloatTensor(audio_40k.astype(np.float32)).unsqueeze(
-            0
-        )
+        audio_40k_torch = torch.FloatTensor(audio_40k.astype(np.float32)).unsqueeze(0)
         spec = spectrogram_torch(
             audio_40k_torch,
             2048,
@@ -185,11 +181,11 @@ class VC:
         len_spec = torch.LongTensor(1).to(self.config.device)
         len_spec[0] = spec.shape[-1]
         feats = self.net_g.get_hidden_features_q(
-                sid,
-                y=spec.unsqueeze(0),
-                y_lengths=len_spec,
+            sid,
+            y=spec.unsqueeze(0),
+            y_lengths=len_spec,
         )[0].data.squeeze(0)
-        feats = feats[:, :spec.shape[-1]]
+        feats = feats[:, : spec.shape[-1]]
         del sid, spec, len_spec
         feats = feats.transpose(0, 1)
         feats = feats.cpu().float().numpy()

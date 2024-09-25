@@ -385,7 +385,7 @@ class Pipeline(object):
 
                     npy = z.detach().cpu().float().numpy()
                     if self.is_half:
-                       npy = npy.astype("float32")
+                        npy = npy.astype("float32")
 
                     npy = np.concatenate(
                         (npy, f0[:, np.newaxis].astype(npy.dtype)), axis=1

@@ -176,7 +176,11 @@ class PosteriorEncoder(nn.Module):
         self.proj = nn.Conv1d(hidden_channels, out_channels * 2, 1)
 
     def forward(
-        self, x: torch.Tensor, x_lengths: torch.Tensor, g: Optional[torch.Tensor] = None, noise=True
+        self,
+        x: torch.Tensor,
+        x_lengths: torch.Tensor,
+        g: Optional[torch.Tensor] = None,
+        noise=True,
     ):
         x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)), 1).to(
             x.dtype
@@ -785,9 +789,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
     ):
         g = self.emb_g(sid).unsqueeze(-1)
         m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
-        z_p = (
-            m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666
-        ) * x_mask
+        z_p = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
         z = self.flow(z_p, x_mask, g=g, reverse=True)
         return z, x_mask
 
@@ -796,7 +798,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         self,
         sid: torch.Tensor,
         nsff0: torch.Tensor,
-        z: torch.Tensor, 
+        z: torch.Tensor,
         x_mask: torch.Tensor,
     ):
         g = self.emb_g(sid).unsqueeze(-1)
@@ -831,9 +833,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
             nsff0 = nsff0[:, head : head + length]
         else:
             m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
-            z_p = (
-                m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666
-            ) * x_mask
+            z_p = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
             z = self.flow(z_p, x_mask, g=g, reverse=True)
         o = self.dec(z * x_mask, nsff0, g=g, n_res=return_length2)
         return o, x_mask, (z, z_p, m_p, logs_p)
