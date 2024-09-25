@@ -382,7 +382,7 @@ class Pipeline(object):
                     z = z.squeeze(0).transpose(0, 1)
                     npy = z.detach().cpu().float().numpy()
                     if self.is_half:
-                       npy = npy.astype("float32")
+                        npy = npy.astype("float32")
 
                     # _, I = index.search(npy, 1)
                     # npy = big_npy[I.squeeze()]
