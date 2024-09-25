@@ -23,7 +23,9 @@ from configs.config import Config
 config = Config()
 vc = VC(config)
 vc.enc_q = True
-vc.get_vc("D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/enc_q.pth", keep_enc_q=True)
+vc.get_vc("D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/enc_q.pth")
+
+from f0_magic import resize_with_zeros
 
 if "privateuseone" not in device:
     device = "cpu"
@@ -52,13 +54,29 @@ def printt(strr):
     f.flush()
 
 
+model_rmvpe = None
+def compute_f0(path):
+    print("computing f0 for: " + path)
+    x = load_audio(path, 16000)
+
+    global model_rmvpe
+    if model_rmvpe is None:
+        from infer.lib.rmvpe import RMVPE
+
+        print("Loading rmvpe model")
+        model_rmvpe = RMVPE("assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
+    f0 = model_rmvpe.infer_from_audio(x, thred=0.03)
+    f0_mel = 1127 * np.log(1 + f0 / 700)
+    return (f0_mel - 550) / 120
+
+
 printt(" ".join(sys.argv))
 model_path = "assets/hubert/hubert_base.pt"
 
 printt("exp_dir: " + exp_dir)
 wavPath = "%s/0_gt_wavs" % exp_dir
 outPath = (
-    "%s/3_feature192" % exp_dir
+    "%s/3_feature193" % exp_dir
 )
 os.makedirs(outPath, exist_ok=True)
 
@@ -75,6 +93,10 @@ else:
                 out_path = "%s/%s" % (outPath, file.replace("wav", "npy"))
 
                 feats = vc.get_hidden_features(0, wav_path)
+                f0 = resize_with_zeros(compute_f0(wav_path), feats.shape[0])
+                feats = np.concatenate(
+                    (feats, f0[:, np.newaxis]), axis=1
+                )
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)

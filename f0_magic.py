@@ -431,8 +431,7 @@ model_rmvpe = None
 
 def compute_f0_inference(path, index_file=""):
     print("computing f0 for: " + path)
-    x = load_audio(path, 44100)
-    x = librosa.resample(x, orig_sr=44100, target_sr=sr)
+    x = load_audio(path, sr)
 
     global model_rmvpe
     if model_rmvpe is None:
@@ -502,8 +501,7 @@ def compute_f0_inference(path, index_file=""):
 
 def compute_f0(path):
     print("computing f0 for: " + path)
-    x = load_audio(path, 44100)
-    x = librosa.resample(x, orig_sr=44100, target_sr=sr)
+    x = load_audio(path, sr)
 
     global model_rmvpe
     if model_rmvpe is None:
@@ -585,8 +583,7 @@ def compute_d(path):
     if hubert_model is None:
         hubert_model = load_hubert(config)
 
-    audio = load_audio(path, 44100)
-    audio = librosa.resample(audio, orig_sr=44100, target_sr=16000)
+    audio = load_audio(path, sr)
 
     feats = extract_features_simple(
         audio, model=hubert_model, version="v2", device="cuda", is_half=config.is_half
