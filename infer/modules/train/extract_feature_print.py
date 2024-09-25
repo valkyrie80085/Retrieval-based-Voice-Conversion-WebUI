@@ -1,6 +1,7 @@
 import os
 import sys
 import traceback
+import random
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
@@ -31,7 +32,7 @@ from infer.lib.audio import extract_features_new
 
 GET_EXTENDED_FEATURES = False
 
-index_file = None
+index_file = "D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/logs/ipa/added_IVF521_Flat_nprobe_1_ipa_v2.index"
 if index_file is not None:
     import faiss
 
@@ -153,7 +154,7 @@ else:
 
                 feats = feats.squeeze(0).float().cpu().numpy()
 
-                if index_file is not None:
+                if index_file is not None and random.randint(0, 1) == 0:
                     score, ix = index.search(feats, k=8)
                     weight = np.square(1 / score)
                     weight /= weight.sum(axis=1, keepdims=True)
