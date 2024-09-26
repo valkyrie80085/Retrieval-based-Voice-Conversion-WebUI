@@ -287,7 +287,7 @@ class Pipeline(object):
                 spec = spec.to(self.device)
                 len_spec = torch.LongTensor(1).to(self.device)
                 len_spec[0] = spec.shape[-1]
-                z, x_mask = net_g.get_hidden_features_q(sid, spec, len_spec)
+                z, x_mask = net_g.get_hidden_features_q(sid, spec.unsqueeze(0), len_spec)
                 audio1 = (
                     (
                         net_g.infer_from_hidden_features(
@@ -301,7 +301,7 @@ class Pipeline(object):
                     .float()
                     .numpy()
                 )
-                del spec, len_spec
+                del spec, len_spec, z, x_mask
         else:
             feats = extract_features_simple_segment(
                 audio0,
@@ -421,6 +421,7 @@ class Pipeline(object):
                     .numpy()
                 )
                 del hasp, arg
+                del z, x_mask
             del feats, p_len
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
