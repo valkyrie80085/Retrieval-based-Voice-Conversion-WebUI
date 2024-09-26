@@ -199,11 +199,11 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
     if hasattr(torch, "xpu") and torch.xpu.is_available():
         pass
     elif torch.cuda.is_available():
-        net_g = DDP(net_g, device_ids=[rank])
-        net_d = DDP(net_d, device_ids=[rank])
+        net_g = DDP(net_g, device_ids=[rank], find_unused_parameters=True)
+        net_d = DDP(net_d, device_ids=[rank], find_unused_parameters=True)
     else:
-        net_g = DDP(net_g)
-        net_d = DDP(net_d)
+        net_g = DDP(net_g, find_unused_parameters=True)
+        net_d = DDP(net_d, find_unused_parameters=True)
 
     try:  # 如果能加载自动resume
         _, _, _, epoch_str = utils.load_checkpoint(

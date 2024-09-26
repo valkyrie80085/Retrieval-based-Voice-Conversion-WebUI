@@ -757,8 +757,10 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         # print(1,pitch.shape)#[bs,t]
         g = self.emb_g(ds).unsqueeze(-1)  # [b, 256, 1]##1是t，广播的
         m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
-        z, m_q, logs_q, y_mask = self.enc_q(y, y_lengths, g=g)
-        z_p = self.flow(z, y_mask, g=g)
+#        z, m_q, logs_q, y_mask = self.enc_q(y, y_lengths, g=g)
+#        z_p = self.flow(z, y_mask, g=g)
+        z_p = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
+        z = z_p.detach()
         z_slice, ids_slice = commons.rand_slice_segments(
             z, y_lengths, self.segment_size
         )
@@ -766,7 +768,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         pitchf = commons.slice_segments2(pitchf, ids_slice, self.segment_size)
         # print(-2,pitchf.shape,z_slice.shape)
         o = self.dec(z_slice, pitchf, g=g)
-        return o, ids_slice, x_mask, y_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
+        return o, ids_slice, x_mask.detach(), torch.zeros_like(x_mask), (torch.zeros_like(z), torch.zeros_like(z_p), torch.zeros_like(m_p), torch.zeros_like(logs_p), torch.zeros_like(m_p), torch.zeros_like(logs_p))
 
     @torch.jit.export
     def get_hidden_features_q(
