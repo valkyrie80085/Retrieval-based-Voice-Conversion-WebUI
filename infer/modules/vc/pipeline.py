@@ -287,7 +287,9 @@ class Pipeline(object):
                 spec = spec.to(self.device)
                 len_spec = torch.LongTensor(1).to(self.device)
                 len_spec[0] = spec.shape[-1]
-                z, x_mask = net_g.get_hidden_features_q(sid, spec.unsqueeze(0), len_spec)
+                z, x_mask = net_g.get_hidden_features_q(
+                    sid, spec.unsqueeze(0), len_spec
+                )
                 audio1 = (
                     (
                         net_g.infer_from_hidden_features(

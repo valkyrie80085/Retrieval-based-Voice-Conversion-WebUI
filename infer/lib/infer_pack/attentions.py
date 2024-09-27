@@ -410,8 +410,16 @@ class FFN(nn.Module):
         # else:
         #     self.padding = self._same_padding
 
-        self.conv_1 = nn.Conv1d(in_channels, filter_channels, kernel_size)
-        self.conv_2 = nn.Conv1d(filter_channels, out_channels, kernel_size)
+        self.conv_1 = nn.Conv1d(
+            in_channels,
+            filter_channels,
+            kernel_size,
+        )
+        self.conv_2 = nn.Conv1d(
+            filter_channels,
+            out_channels,
+            kernel_size,
+        )
         self.drop = nn.Dropout(p_dropout)
 
     def padding(self, x: torch.Tensor, x_mask: torch.Tensor) -> torch.Tensor:
