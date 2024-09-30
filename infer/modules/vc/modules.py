@@ -373,13 +373,14 @@ class VC:
             if output_to_file:
                 try:
                     sf.write(
-                        "D:/matthew99/AI/singing_ai/tmp/output %s %.0f %.2f %.2f %.2f %s %f.wav"
+                        "D:/matthew99/AI/singing_ai/tmp/output %s %.0f %.2f %.2f %.2f %.2f %s %f.wav"
                         % (
                             os.path.splitext(os.path.split(input_audio_path)[1])[0],
                             f0_up_key,
                             index_rate,
                             protect,
                             segment_length,
+                            rms_mix_rate,
                             f0_method,
                             time.time() * 1000,
                         ),

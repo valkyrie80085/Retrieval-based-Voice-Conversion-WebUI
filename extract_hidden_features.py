@@ -30,32 +30,6 @@ vc.get_vc("D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/enc
 
 from f0_magic import resize_with_zeros
 
-if "privateuseone" not in device:
-    device = "cpu"
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif torch.backends.mps.is_available():
-        device = "mps"
-else:
-    import torch_directml
-
-    device = torch_directml.device(torch_directml.default_device())
-
-    def forward_dml(ctx, x, scale):
-        ctx.scale = scale
-        res = x.clone().detach()
-        return res
-
-    fairseq.modules.grad_multiply.GradMultiply.forward = forward_dml
-
-f = open("%s/extract_f0_feature.log" % exp_dir, "a+")
-
-
-def printt(strr):
-    print(strr)
-    f.write("%s\n" % strr)
-    f.flush()
-
 
 model_rmvpe = None
 
@@ -75,10 +49,10 @@ def compute_f0(path):
     return (f0_mel - 550) / 120
 
 
-printt(" ".join(sys.argv))
+print(" ".join(sys.argv))
 model_path = "assets/hubert/hubert_base.pt"
 
-printt("exp_dir: " + exp_dir)
+print("exp_dir: " + exp_dir)
 wavPath = "%s/0_gt_wavs" % exp_dir
 outPath = "%s/3_feature193" % exp_dir
 os.makedirs(outPath, exist_ok=True)
@@ -86,9 +60,9 @@ os.makedirs(outPath, exist_ok=True)
 todo = sorted(list(os.listdir(wavPath)))
 n = max(1, len(todo) // 50)
 if len(todo) == 0:
-    printt("no-feature-todo")
+    print("no-feature-todo")
 else:
-    printt("all-feature-%s" % len(todo))
+    print("all-feature-%s" % len(todo))
     for idx, file in enumerate(todo):
         try:
             if file.endswith(".wav"):
@@ -103,9 +77,9 @@ else:
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)
                 else:
-                    printt("%s-contains nan" % file)
+                    print("%s-contains nan" % file)
                 if idx % n == 0:
-                    printt("now-%s,all-%s,%s,%s" % (len(todo), idx, file, feats.shape))
+                    print("now-%s,all-%s,%s,%s" % (len(todo), idx, file, feats.shape))
         except:
-            printt(traceback.format_exc())
-    printt("all-feature-done")
+            print(traceback.format_exc())
+    print("all-feature-done")
