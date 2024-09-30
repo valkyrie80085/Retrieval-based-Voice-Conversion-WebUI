@@ -67,7 +67,12 @@ def clean_path(path_str):
     return path_str.strip(" ").strip('"').strip("\n").strip('"').strip(" ")
 
 
-def extract_features_simple_segment(audio, model, version, device, is_half=False):
+def extract_features_simple_segment(audio, model, version, device, is_half=False, sr=16000):
+    if sr != 16000:
+        audio = librosa.resample(
+            audio, orig_sr=sr, target_sr=16000
+        )  # , res_type="soxr_vhq"
+
     feats = torch.from_numpy(audio)
     if is_half:
         feats = feats.half()
@@ -124,7 +129,7 @@ def extract_features_simple(audio, model, version, device, is_half=False, sr=160
                 version,
                 device,
                 is_half,
-            )[:, 150:-150]
+            )[:, 150:-150].squeeze(0).cpu().numpy()
         )
         if next_split == len(audio):
             break
@@ -132,29 +137,29 @@ def extract_features_simple(audio, model, version, device, is_half=False, sr=160
             last_split = next_split
             i += 1
 
-    return torch.cat(feats_segments, dim=1)
+    return np.concatenate(feats_segments, axis=0)
 
 
 def extract_features_new(
     audio_original, audio_shifted, model, version, device, is_half=False
 ):
-    feats_original = extract_features_simple(
+    feats_original = extract_features_simple_segment(
         audio_original,
         model=model,
         version=version,
         device=device,
-        sr=16000,
         is_half=is_half,
+        sr=16000,
     )
     if audio_shifted is None:
         return feats_original
-    feats_shifted = extract_features_simple(
+    feats_shifted = extract_features_simple_segment(
         audio_shifted,
         model=model,
         version=version,
         device=device,
-        sr=16000,
         is_half=is_half,
+        sr=16000,
     )
 
     def get_pd(audio, target_length):

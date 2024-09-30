@@ -424,7 +424,7 @@ def extract_f0_feature(gpus, n_p, f0method, if_f0, exp_dir, version19, gpus_rmvp
                     0,
                     inp_path,
                     shift_real,
-                    featur_pit * (average_goal / average),
+                    None,
                     "rmvpe",
                     "",
                     "",

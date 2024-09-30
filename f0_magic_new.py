@@ -529,10 +529,9 @@ def compute_d(path):
     audio = load_audio(path, 44100)
     audio = librosa.resample(audio, orig_sr=44100, target_sr=16000)
 
-    feats = extract_features_simple(
+    npy = extract_features_simple(
         audio, model=hubert_model, version="v2", device="cuda", is_half=config.is_half
     )
-    npy = feats[0].cpu().numpy()
 
     feats_diff = np.pad(np.linalg.norm(npy[:-1] - npy[1:], axis=1), (1, 0))
     return feats_diff

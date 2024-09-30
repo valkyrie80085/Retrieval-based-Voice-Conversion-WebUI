@@ -285,8 +285,7 @@ class Pipeline(object):
                 else:
                     spec = spec.float()
                 spec = spec.to(self.device)
-                len_spec = torch.LongTensor(1).to(self.device)
-                len_spec[0] = spec.shape[-1]
+                len_spec = torch.tensor([spec.shape[-1]], device=self.device).long()
                 z, x_mask = net_g.get_hidden_features_q(
                     sid, spec.unsqueeze(0), len_spec
                 )
@@ -477,7 +476,7 @@ class Pipeline(object):
         else:
             index = big_npy = None
         if if_feature_average:
-            feats = extract_features_simple(
+            feats = extract_features_simple_segment(
                 feature_audio,
                 model=model,
                 version=version,
