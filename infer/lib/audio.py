@@ -67,7 +67,9 @@ def clean_path(path_str):
     return path_str.strip(" ").strip('"').strip("\n").strip('"').strip(" ")
 
 
-def extract_features_simple_segment(audio, model, version, device, is_half=False, sr=16000):
+def extract_features_simple_segment(
+    audio, model, version, device, is_half=False, sr=16000
+):
     if sr != 16000:
         audio = librosa.resample(
             audio, orig_sr=sr, target_sr=16000
@@ -129,7 +131,10 @@ def extract_features_simple(audio, model, version, device, is_half=False, sr=160
                 version,
                 device,
                 is_half,
-            )[:, 150:-150].squeeze(0).cpu().numpy()
+            )[:, 150:-150]
+            .squeeze(0)
+            .cpu()
+            .numpy()
         )
         if next_split == len(audio):
             break
