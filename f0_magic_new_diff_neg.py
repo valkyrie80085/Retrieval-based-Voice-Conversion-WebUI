@@ -395,14 +395,13 @@ def trim_f0(f0, audio, index_file, version="v2"):
     if hubert_model is None:
         hubert_model = load_hubert(config)
 
-    feats = extract_features_simple(
+    npy = extract_features_simple(
         audio,
         model=hubert_model,
         version=version,
         device=device,
         is_half=config.is_half,
     )
-    npy = feats[0].cpu().numpy()
     npy = np.concatenate((npy, np.full((npy.shape[0], 1), 0.5)), axis=1)
 
     score, ix = index.search(npy, k=8)
