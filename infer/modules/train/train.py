@@ -185,10 +185,20 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
     net_d = MultiPeriodDiscriminator(hps.model.use_spectral_norm)
     if torch.cuda.is_available():
         net_d = net_d.cuda(rank)
-    if TRAIN_ENC_P2:    
-        to_optimize = [param for name, param in net_g.named_parameters() if name.startswith('enc_p2.') or name.startswith('dec.') and not name.startswith('flow.')]
+    if TRAIN_ENC_P2:
+        to_optimize = [
+            param
+            for name, param in net_g.named_parameters()
+            if name.startswith("enc_p2.")
+            or name.startswith("dec.")
+            and not name.startswith("flow.")
+        ]
     else:
-        to_optimize = [param for name, param in net_g.named_parameters() if not name.startswith('enc_p2.')]
+        to_optimize = [
+            param
+            for name, param in net_g.named_parameters()
+            if not name.startswith("enc_p2.")
+        ]
     optim_g = torch.optim.AdamW(
         to_optimize,
         hps.train.learning_rate,
@@ -219,12 +229,20 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         # _, _, _, epoch_str = utils.load_checkpoint(utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g,load_opt=0)
         try:
             _, _, _, epoch_str = utils.load_checkpoint(
-                utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g
+                utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"),
+                net_g,
+                optim_g,
+                strict=False,
             )
         except:
             import traceback
+
             _, _, _, _ = utils.load_checkpoint(
-                utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g, load_opt=False
+                utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"),
+                net_g,
+                optim_g,
+                strict=False,
+                load_opt=False,
             )
             epoch_str = 1
             optim_g = torch.optim.AdamW(
@@ -239,6 +257,7 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
     except:  # 如果首次不能加载，加载pretrain
         # traceback.print_exc()
         import traceback
+
         epoch_str = 1
         global_step = 0
         if hps.pretrainG != "":
@@ -453,7 +472,22 @@ def train_and_evaluate(
                     x_mask,
                     z_mask,
                     (z, z_p, m_p, logs_p, m_q, logs_q),
-                ) = net_g(phone, phone_lengths, pitch, pitchf, spec, spec_lengths, sid, train_enc_p2=True) if TRAIN_ENC_P2 else net_g(phone, phone_lengths, pitch, pitchf, spec, spec_lengths, sid)
+                ) = (
+                    net_g(
+                        phone,
+                        phone_lengths,
+                        pitch,
+                        pitchf,
+                        spec,
+                        spec_lengths,
+                        sid,
+                        train_enc_p2=True,
+                    )
+                    if TRAIN_ENC_P2
+                    else net_g(
+                        phone, phone_lengths, pitch, pitchf, spec, spec_lengths, sid
+                    )
+                )
             else:
                 (
                     y_hat,
@@ -508,7 +542,10 @@ def train_and_evaluate(
             with autocast(enabled=False):
                 loss_mel = F.l1_loss(y_mel, y_hat_mel) * hps.train.c_mel
                 if TRAIN_ENC_P2:
-                    loss_kl = kl_loss_gaussian(m_p, logs_p * 2, m_q, logs_q * 2, z_mask) * hps.train.c_kl
+                    loss_kl = (
+                        kl_loss_gaussian(m_p, logs_p * 2, m_q, logs_q * 2, z_mask)
+                        * hps.train.c_kl
+                    )
                 else:
                     loss_kl = kl_loss(z_p, logs_q, m_p, logs_p, z_mask) * hps.train.c_kl
                 loss_fm = feature_loss(fmap_r, fmap_g)
@@ -532,8 +569,8 @@ def train_and_evaluate(
                 # Amor For Tensorboard display
                 if loss_mel > 75:
                     loss_mel = 75
-#                if loss_kl > 9:
-#                    loss_kl = 9
+                #                if loss_kl > 9:
+                #                    loss_kl = 9
 
                 logger.info([global_step, lr])
                 logger.info(

@@ -15,6 +15,7 @@ from infer.lib.infer_pack.commons import get_padding, init_weights
 
 has_xpu = bool(hasattr(torch, "xpu") and torch.xpu.is_available())
 
+
 class TextEncoder(nn.Module):
     def __init__(
         self,
@@ -738,7 +739,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
                     torch.nn.utils.remove_weight_norm(self.enc_q)
         return self
 
-    def call_enc_p( 
+    def call_enc_p(
         self,
         g: torch.Tensor,
         phone: torch.Tensor,
@@ -844,7 +845,9 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
             length = int(return_length.item())
             flow_head = torch.clamp(skip_head - 24, min=0)
             dec_head = head - int(flow_head.item())
-            m_p, logs_p, x_mask = self.call_enc_p(g, phone, pitch, phone_lengths, flow_head)
+            m_p, logs_p, x_mask = self.call_enc_p(
+                g, phone, pitch, phone_lengths, flow_head
+            )
             z_p = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
             if not hasattr(self, "enc_p2"):
                 z = self.flow(z_p, x_mask, g=g, reverse=True)
