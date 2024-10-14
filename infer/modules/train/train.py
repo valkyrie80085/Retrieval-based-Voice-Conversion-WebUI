@@ -219,12 +219,12 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         # _, _, _, epoch_str = utils.load_checkpoint(utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g,load_opt=0)
         try:
             _, _, _, epoch_str = utils.load_checkpoint(
-                utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g, strict=False
+                utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g
             )
         except:
             import traceback
             _, _, _, _ = utils.load_checkpoint(
-                utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g, strict=False, load_opt=False
+                utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g, load_opt=False
             )
             epoch_str = 1
             optim_g = torch.optim.AdamW(
