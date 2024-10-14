@@ -124,7 +124,7 @@ class VC:
 
         if not self.enc_q:
             del self.net_g.enc_q
-        
+
         self.net_g.load_state_dict(self.cpt["weight"], strict=False)
         if hasattr(self.net_g, "enc_p2"):
             keep = False

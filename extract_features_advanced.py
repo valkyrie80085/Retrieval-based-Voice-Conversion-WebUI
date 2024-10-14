@@ -32,6 +32,7 @@ from configs.config import Config
 from scipy.io import wavfile
 
 from scipy.interpolate import CubicSpline
+
 eps = 1e-3
 
 config = Config()
@@ -98,16 +99,16 @@ def add_noise(contour, amp=5, scale=1):
 
 
 vc_list = (
-        ("0", 0),
-        ("1", 0),
-        ("2", 0), 
-        ("3", -9), 
-        ("4", -9),
-        ("5", -9),
-        ("6", -12),
-        ("7", -15),
-        (None, 0),
-        )
+    ("0", 0),
+    ("1", 0),
+    ("2", 0),
+    ("3", -9),
+    ("4", -9),
+    ("5", -9),
+    ("6", -12),
+    ("7", -15),
+    (None, 0),
+)
 
 model_path = "assets/hubert/hubert_base.pt"
 
@@ -125,7 +126,7 @@ for idx, file in enumerate(todo):
         vc_todos[random.randint(0, len(vc_list) - 1)].append(file)
 
 idx = 0
-n = max(1, total // 100) 
+n = max(1, total // 100)
 
 for i in range(len(vc_list)):
     vc_name, shift = vc_list[i]
@@ -152,7 +153,11 @@ for i in range(len(vc_list)):
                 if vc_name is None:
                     audio_shifted = audio.copy()
                 else:
-                    f0 = add_noise(pitch_blur(compute_f0(wav_path)), amp=random.uniform(0, 20), scale=random.randint(3, 10))
+                    f0 = add_noise(
+                        pitch_blur(compute_f0(wav_path)),
+                        amp=random.uniform(0, 20),
+                        scale=random.randint(3, 10),
+                    )
                     f0 = f0 * (2 ** ((shift - random.uniform(0, 3)) / 12))
                     f0 = np.pad(f0, (300, 300))
                     np.save(f0_npy_path, f0, allow_pickle=False)
