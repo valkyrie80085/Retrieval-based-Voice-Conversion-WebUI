@@ -16,6 +16,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = hps.gpus.replace("-", ",")
 n_gpus = len(hps.gpus.split("-"))
 from random import randint, shuffle
 
+TRAIN_ENC_P2 = True
+
 import torch
 
 try:
@@ -72,6 +74,7 @@ from infer.lib.train.losses import (
     feature_loss,
     generator_loss,
     kl_loss,
+    kl_loss_gaussian,
 )
 from infer.lib.train.mel_processing import mel_spectrogram_torch, spec_to_mel_torch
 from infer.lib.train.process_ckpt import savee
@@ -182,8 +185,12 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
     net_d = MultiPeriodDiscriminator(hps.model.use_spectral_norm)
     if torch.cuda.is_available():
         net_d = net_d.cuda(rank)
+    if TRAIN_ENC_P2:    
+        to_optimize = [param for name, param in net_g.named_parameters() if name.startswith('enc_p2.') or name.startswith('dec.') and not name.startswith('flow.')]
+    else:
+        to_optimize = [param for name, param in net_g.named_parameters() if not name.startswith('enc_p2.')]
     optim_g = torch.optim.AdamW(
-        net_g.parameters(),
+        to_optimize,
         hps.train.learning_rate,
         betas=hps.train.betas,
         eps=hps.train.eps,
@@ -194,8 +201,6 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         betas=hps.train.betas,
         eps=hps.train.eps,
     )
-    # net_g = DDP(net_g, device_ids=[rank], find_unused_parameters=True)
-    # net_d = DDP(net_d, device_ids=[rank], find_unused_parameters=True)
     if hasattr(torch, "xpu") and torch.xpu.is_available():
         pass
     elif torch.cuda.is_available():
@@ -212,14 +217,28 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         if rank == 0:
             logger.info("loaded D")
         # _, _, _, epoch_str = utils.load_checkpoint(utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g,load_opt=0)
-        _, _, _, epoch_str = utils.load_checkpoint(
-            utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g
-        )
+        try:
+            _, _, _, epoch_str = utils.load_checkpoint(
+                utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g, strict=False
+            )
+        except:
+            import traceback
+            _, _, _, _ = utils.load_checkpoint(
+                utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"), net_g, optim_g, strict=False, load_opt=False
+            )
+            epoch_str = 1
+            optim_g = torch.optim.AdamW(
+                to_optimize,
+                hps.train.learning_rate,
+                betas=hps.train.betas,
+                eps=hps.train.eps,
+            )
         global_step = (epoch_str - 1) * len(train_loader)
         # epoch_str = 1
         # global_step = 0
     except:  # 如果首次不能加载，加载pretrain
         # traceback.print_exc()
+        import traceback
         epoch_str = 1
         global_step = 0
         if hps.pretrainG != "":
@@ -434,7 +453,7 @@ def train_and_evaluate(
                     x_mask,
                     z_mask,
                     (z, z_p, m_p, logs_p, m_q, logs_q),
-                ) = net_g(phone, phone_lengths, pitch, pitchf, spec, spec_lengths, sid)
+                ) = net_g(phone, phone_lengths, pitch, pitchf, spec, spec_lengths, sid, train_enc_p2=True) if TRAIN_ENC_P2 else net_g(phone, phone_lengths, pitch, pitchf, spec, spec_lengths, sid)
             else:
                 (
                     y_hat,
@@ -488,7 +507,10 @@ def train_and_evaluate(
             y_d_hat_r, y_d_hat_g, fmap_r, fmap_g = net_d(wave, y_hat)
             with autocast(enabled=False):
                 loss_mel = F.l1_loss(y_mel, y_hat_mel) * hps.train.c_mel
-                loss_kl = kl_loss(z_p, logs_q, m_p, logs_p, z_mask) * hps.train.c_kl
+                if TRAIN_ENC_P2:
+                    loss_kl = kl_loss_gaussian(m_p, logs_p * 2, m_q, logs_q * 2, z_mask) * hps.train.c_kl
+                else:
+                    loss_kl = kl_loss(z_p, logs_q, m_p, logs_p, z_mask) * hps.train.c_kl
                 loss_fm = feature_loss(fmap_r, fmap_g)
                 loss_gen, losses_gen = generator_loss(y_d_hat_g)
                 loss_gen_all = loss_gen + loss_fm + loss_mel + loss_kl
@@ -510,8 +532,8 @@ def train_and_evaluate(
                 # Amor For Tensorboard display
                 if loss_mel > 75:
                     loss_mel = 75
-                if loss_kl > 9:
-                    loss_kl = 9
+#                if loss_kl > 9:
+#                    loss_kl = 9
 
                 logger.info([global_step, lr])
                 logger.info(

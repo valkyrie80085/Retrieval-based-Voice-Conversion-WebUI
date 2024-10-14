@@ -15,7 +15,6 @@ from infer.lib.infer_pack.commons import get_padding, init_weights
 
 has_xpu = bool(hasattr(torch, "xpu") and torch.xpu.is_available())
 
-
 class TextEncoder(nn.Module):
     def __init__(
         self,
@@ -180,7 +179,6 @@ class PosteriorEncoder(nn.Module):
         x: torch.Tensor,
         x_lengths: torch.Tensor,
         g: Optional[torch.Tensor] = None,
-        noise=True,
     ):
         x_mask = torch.unsqueeze(commons.sequence_mask(x_lengths, x.size(2)), 1).to(
             x.dtype
@@ -189,10 +187,7 @@ class PosteriorEncoder(nn.Module):
         x = self.enc(x, x_mask, g=g)
         stats = self.proj(x) * x_mask
         m, logs = torch.split(stats, self.out_channels, dim=1)
-        if noise:
-            z = (m + torch.randn_like(m) * torch.exp(logs)) * x_mask
-        else:
-            z = m * x_mask
+        z = (m + torch.randn_like(m) * torch.exp(logs)) * x_mask
         return z, m, logs, x_mask
 
     def remove_weight_norm(self):
@@ -743,6 +738,23 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
                     torch.nn.utils.remove_weight_norm(self.enc_q)
         return self
 
+    def call_enc_p( 
+        self,
+        g: torch.Tensor,
+        phone: torch.Tensor,
+        pitch: torch.Tensor,
+        lengths: torch.Tensor,
+        skip_head: Optional[torch.Tensor] = None,
+    ):
+        if hasattr(self, "enc_p2"):
+            m_p, logs_p, x_mask = self.enc_p(phone, pitch, lengths)
+            x = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
+            x = self.flow(x, x_mask, g=g, reverse=True)
+            x = torch.transpose(x, 1, -1)
+            return self.enc_p2(x, pitch, lengths, skip_head)
+        else:
+            return self.enc_p(phone, pitch, lengths, skip_head)
+
     @torch.jit.ignore
     def forward(
         self,
@@ -753,12 +765,12 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         y: torch.Tensor,
         y_lengths: torch.Tensor,
         ds: Optional[torch.Tensor] = None,
+        train_enc_p2: bool = False,
     ):  # 这里ds是id，[bs,1]
         # print(1,pitch.shape)#[bs,t]
         g = self.emb_g(ds).unsqueeze(-1)  # [b, 256, 1]##1是t，广播的
-        m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
+        m_p, logs_p, x_mask = self.call_enc_p(g, phone, pitch, phone_lengths)
         z, m_q, logs_q, y_mask = self.enc_q(y, y_lengths, g=g)
-        z_p = self.flow(z, y_mask, g=g)
         z_slice, ids_slice = commons.rand_slice_segments(
             z, y_lengths, self.segment_size
         )
@@ -766,7 +778,11 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         pitchf = commons.slice_segments2(pitchf, ids_slice, self.segment_size)
         # print(-2,pitchf.shape,z_slice.shape)
         o = self.dec(z_slice, pitchf, g=g)
-        return o, ids_slice, x_mask, y_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
+        if train_enc_p2:
+            return o, ids_slice, x_mask, y_mask, (None, None, m_p, logs_p, m_q, logs_q)
+        else:
+            z_p = self.flow(z, y_mask, g=g)
+            return o, ids_slice, x_mask, y_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
 
     @torch.jit.export
     def get_hidden_features_q(
@@ -776,8 +792,8 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         y_lengths: torch.Tensor,
     ):
         g = self.emb_g(sid).unsqueeze(-1)
-        z, _, __, y_mask = self.enc_q(y, y_lengths, g=g, noise=False)
-        return z, y_mask
+        _, m, logs, mask = self.enc_q(y, y_lengths, g=g)
+        return m * mask, logs
 
     @torch.jit.export
     def get_hidden_features_p(
@@ -788,9 +804,12 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         sid: torch.Tensor,
     ):
         g = self.emb_g(sid).unsqueeze(-1)
-        m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
+        m_p, logs_p, x_mask = self.call_enc_p(g, phone, pitch, phone_lengths)
         z_p = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
-        z = self.flow(z_p, x_mask, g=g, reverse=True)
+        if not hasattr(self, "enc_p2"):
+            z = self.flow(z_p, x_mask, g=g, reverse=True)
+        else:
+            z = z_p.clone()
         return z, x_mask
 
     @torch.jit.export
@@ -825,16 +844,22 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
             length = int(return_length.item())
             flow_head = torch.clamp(skip_head - 24, min=0)
             dec_head = head - int(flow_head.item())
-            m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths, flow_head)
+            m_p, logs_p, x_mask = self.call_enc_p(g, phone, pitch, phone_lengths, flow_head)
             z_p = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
-            z = self.flow(z_p, x_mask, g=g, reverse=True)
+            if not hasattr(self, "enc_p2"):
+                z = self.flow(z_p, x_mask, g=g, reverse=True)
+            else:
+                z = z_p.clone()
             z = z[:, :, dec_head : dec_head + length]
             x_mask = x_mask[:, :, dec_head : dec_head + length]
             nsff0 = nsff0[:, head : head + length]
         else:
-            m_p, logs_p, x_mask = self.enc_p(phone, pitch, phone_lengths)
+            m_p, logs_p, x_mask = self.call_enc_p(g, phone, pitch, phone_lengths)
             z_p = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
-            z = self.flow(z_p, x_mask, g=g, reverse=True)
+            if not hasattr(self, "enc_p2"):
+                z = self.flow(z_p, x_mask, g=g, reverse=True)
+            else:
+                z = z_p.clone()
         o = self.dec(z * x_mask, nsff0, g=g, n_res=return_length2)
         return o, x_mask, (z, z_p, m_p, logs_p)
 
@@ -886,6 +911,16 @@ class SynthesizerTrnMs768NSFsid(SynthesizerTrnMs256NSFsid):
         del self.enc_p
         self.enc_p = TextEncoder(
             768,
+            inter_channels,
+            hidden_channels,
+            filter_channels,
+            n_heads,
+            n_layers,
+            kernel_size,
+            float(p_dropout),
+        )
+        self.enc_p2 = TextEncoder(
+            hidden_channels,
             inter_channels,
             hidden_channels,
             filter_channels,
