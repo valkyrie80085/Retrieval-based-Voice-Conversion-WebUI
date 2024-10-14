@@ -99,10 +99,10 @@ class VC:
                 "",
                 "",
             )
-        if os.getenv("weight_root") is not None:
-            person = f'{os.getenv("weight_root")}/{sid}'
-        else:
+        if os.path.isfile(sid):
             person = sid
+        else:
+            person = f'{os.getenv("weight_root")}/{sid}'
         logger.info(f"Loading: {person}")
 
         self.cpt = torch.load(person, map_location="cpu")
