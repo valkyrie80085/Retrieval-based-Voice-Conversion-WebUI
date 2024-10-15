@@ -16,7 +16,10 @@ os.environ["CUDA_VISIBLE_DEVICES"] = hps.gpus.replace("-", ",")
 n_gpus = len(hps.gpus.split("-"))
 from random import randint, shuffle
 
-TRAIN_ENC_P2 = True
+try:
+    TRAIN_ENC_P2 = hps.train.enc_p2
+except:
+    TRAIN_ENC_P2 = False
 
 import torch
 
@@ -194,11 +197,9 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
             and not name.startswith("flow.")
         ]
     else:
-        to_optimize = [
-            param
-            for name, param in net_g.named_parameters()
-            if not name.startswith("enc_p2.")
-        ]
+        if hasattr(net_g, "enc_p2"):
+            del net_g.enc_p2
+        to_optimize = net_g.parameters()
     optim_g = torch.optim.AdamW(
         to_optimize,
         hps.train.learning_rate,
