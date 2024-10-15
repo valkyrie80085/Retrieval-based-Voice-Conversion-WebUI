@@ -129,7 +129,7 @@ class VC:
         if hasattr(self.net_g, "enc_p2"):
             keep = False
             for key in self.cpt["weight"].keys():
-                if "enc_p2" in key:
+                if "enc_p2." in key:
                     keep = True
                     break
             if not keep:
