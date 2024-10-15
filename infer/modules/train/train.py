@@ -234,8 +234,8 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
                 optim_g,
             )
         except:
-#            import traceback
-#            print(traceback.format_exc())
+            #            import traceback
+            #            print(traceback.format_exc())
 
             _, _, _, _ = utils.load_checkpoint(
                 utils.latest_checkpoint_path(hps.model_dir, "G_*.pth"),
