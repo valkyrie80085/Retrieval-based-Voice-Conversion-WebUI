@@ -1155,7 +1155,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                                 minimum=1,
                                 maximum=config.x_max + 2 * config.x_query + 1,
                                 label=i18n("Attention block length"),
-                                value=5.55,
+                                value=10,
                                 step=0.01,
                                 interactive=True,
                             )
