@@ -754,7 +754,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
             x = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
             x = self.flow(x, x_mask, g=g, reverse=True)
             x = torch.transpose(x, 1, -1)
-            return self.enc_p2(x, pitch, lengths, skip_head, block_length_override=block_length_override)
+            return self.enc_p2(x, pitch, lengths, skip_head)
         else:
             return self.enc_p(phone, pitch, lengths, skip_head, block_length_override=block_length_override)
 
