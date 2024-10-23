@@ -45,6 +45,7 @@ class Encoder(nn.Module):
                     n_heads,
                     p_dropout=p_dropout,
                     window_size=window_size,
+                    block_length=555,
                 )
             )
             self.norm_layers_1.append(LayerNorm(hidden_channels))

@@ -25,7 +25,7 @@ import torch.nn.functional as F
 now_dir = os.getcwd()
 sys.path.append(now_dir)
 from infer.lib.audio import load_audio
-from infer.lib.audio import extract_features_new
+from infer.lib.audio import extract_features_simple_segment
 
 from infer.modules.vc.modules import VC
 from configs.config import Config
@@ -149,15 +149,15 @@ for i in range(len(vc_list)):
             try:
                 np.load(out_path)
             except:
-                audio = load_audio(wav_path, 16000)
                 if vc_name is None:
-                    audio_shifted = audio.copy()
+                    audio = load_audio(wav_path, 16000)
                 else:
-                    f0 = add_noise(
-                        pitch_blur(compute_f0(wav_path)),
-                        amp=random.uniform(0, 20),
-                        scale=random.randint(3, 10),
-                    )
+#                    f0 = add_noise(
+#                        pitch_blur(compute_f0(wav_path)),
+#                        amp=random.uniform(0, 20),
+#                        scale=random.randint(3, 10),
+#                    )
+                    f0 = compute_f0(wav_path)
                     f0 = f0 * (2 ** ((shift - random.uniform(0, 3)) / 12))
                     f0 = np.pad(f0, (300, 300))
                     np.save(f0_npy_path, f0, allow_pickle=False)
@@ -178,10 +178,10 @@ for i in range(len(vc_list)):
                         output_to_file=False,
                     )[1]
                     os.remove(f0_npy_path)
-                    audio_shifted = opt / max(np.abs(opt).max(), 32768)
+                    audio = opt / max(np.abs(opt).max(), 32768)
 
-                feats = extract_features_new(
-                    audio, audio_shifted, model=model, version=version, device=device
+                feats = extract_features_simple_segment(
+                    audio, model=model, version=version, device=device
                 )
 
                 feats = feats.squeeze(0).float().cpu().numpy()
