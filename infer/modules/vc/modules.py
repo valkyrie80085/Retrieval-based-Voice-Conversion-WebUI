@@ -213,7 +213,7 @@ class VC:
         resample_sr,
         rms_mix_rate,
         protect,
-        block_length_override=None,
+        block_length_override_=0,
         f0_invert_axis=" ",
         feature_audio_path="",
         if_feature_average=False,
@@ -231,6 +231,10 @@ class VC:
             input_audio_path
         )  # 防止小白拷路径头尾带了空格和"和回车
         f0_up_key = int(f0_up_key)
+        if block_length_override_ == 0:
+            block_length_override = None
+        else:
+            block_length_override=int(round(block_length_override_ * 100))
 
         if f0_invert_axis != " ":
             notes = [
@@ -362,12 +366,12 @@ class VC:
                 rms_mix_rate,
                 self.version,
                 protect,
-                f0_invert_axis,
-                f0_file=f0_file,
                 block_length_override=block_length_override,
+                f0_invert_axis=f0_invert_axis,
                 feature_audio=feature_audio,
                 if_feature_average=if_feature_average,
                 x_center_override=segment_length,
+                f0_file=f0_file,
                 f0_npy_path=f0_npy_path,
                 audio_40k=audio_40k,
             )
@@ -383,7 +387,7 @@ class VC:
             if output_to_file:
                 try:
                     sf.write(
-                        "D:/matthew99/AI/singing_ai/tmp/output %s %.0f %.2f %.2f %.2f %.2f %s %f.wav"
+                        "D:/matthew99/AI/singing_ai/tmp/output %s %.0f %.2f %.2f %.2f %.2f %.2f %s %f.wav"
                         % (
                             os.path.splitext(os.path.split(input_audio_path)[1])[0],
                             f0_up_key,
@@ -391,6 +395,7 @@ class VC:
                             protect,
                             segment_length,
                             rms_mix_rate,
+                            block_length_override_,
                             f0_method,
                             time.time() * 1000,
                         ),

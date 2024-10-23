@@ -1152,10 +1152,10 @@ with gr.Blocks(title="RVC WebUI") as app:
                                 interactive=True,
                             )
                             block_length = gr.Slider(
-                                minimum=config.x_pad * 2,
+                                minimum=1,
                                 maximum=config.x_max + 2 * config.x_query + 1,
                                 label=i18n("Attention block length"),
-                                value=config.x_center,
+                                value=5.55,
                                 step=0.01,
                                 interactive=True,
                             )

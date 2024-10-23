@@ -57,7 +57,7 @@ class TextEncoder(nn.Module):
         pitch: torch.Tensor,
         lengths: torch.Tensor,
         skip_head: Optional[torch.Tensor] = None,
-        block_length_override: Optional[bool] = None,
+        block_length_override: Optional[int] = None,
     ):
         if pitch is None:
             x = self.emb_phone(phone)
@@ -747,7 +747,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         pitch: torch.Tensor,
         lengths: torch.Tensor,
         skip_head: Optional[torch.Tensor] = None,
-        block_length_override: Optional[bool] = None
+        block_length_override: Optional[int] = None
     ):
         if hasattr(self, "enc_p2"):
             m_p, logs_p, x_mask = self.enc_p(phone, pitch, lengths, block_length_override=block_length_override)
@@ -805,7 +805,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         phone_lengths: torch.Tensor,
         pitch: torch.Tensor,
         sid: torch.Tensor,
-        block_length_override: Optional[bool] = None,
+        block_length_override: Optional[int] = None,
     ):
         g = self.emb_g(sid).unsqueeze(-1)
         m_p, logs_p, x_mask = self.call_enc_p(g, phone, pitch, phone_lengths, block_length_override=block_length_override)
@@ -839,7 +839,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         skip_head: Optional[torch.Tensor] = None,
         return_length: Optional[torch.Tensor] = None,
         return_length2: Optional[torch.Tensor] = None,
-        block_length_override: Optional[bool] = None,
+        block_length_override: Optional[int] = None,
     ):
         g = self.emb_g(sid).unsqueeze(-1)
         if skip_head is not None and return_length is not None:

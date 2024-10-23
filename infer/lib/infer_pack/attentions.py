@@ -218,7 +218,7 @@ class MultiHeadAttention(nn.Module):
                 self.conv_k.bias.copy_(self.conv_q.bias)
 
     def forward(
-        self, x: torch.Tensor, c: torch.Tensor, attn_mask: Optional[torch.Tensor] = None, block_length_override: Optional[bool] = None,
+        self, x: torch.Tensor, c: torch.Tensor, attn_mask: Optional[torch.Tensor] = None, block_length_override: Optional[int] = None,
     ):
         q = self.conv_q(x)
         k = self.conv_k(c)
@@ -235,7 +235,7 @@ class MultiHeadAttention(nn.Module):
         key: torch.Tensor,
         value: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
-        block_length_override: Optional[bool] =None,
+        block_length_override: Optional[int] =None,
     ):
         # reshape [b, d, t] -> [b, n_h, t, d_k]
         b, d, t_s = key.size()
