@@ -273,6 +273,7 @@ class Pipeline(object):
         index_rate,
         version,
         protect,
+        block_length_override=None,
         feature_override=None,
         spec=None,
     ):  # ,file_index,file_big_npy
@@ -379,6 +380,7 @@ class Pipeline(object):
                     (feats, p_len, pitch, pitchf, sid) if hasp else (feats, p_len, sid)
                 )
                 z, x_mask = net_g.get_hidden_features_p(feats, p_len, pitch, sid)
+                z, x_mask = net_g.get_hidden_features_p(feats, p_len, pitch, sid, block_length_override=block_length_override)
                 if False:
                     f0_mel = 1127 * np.log(
                         1 + pitchf.squeeze(0).detach().cpu().numpy() / 700
@@ -613,6 +615,7 @@ class Pipeline(object):
                         index_rate,
                         version,
                         protect,
+                        block_length_override=block_length_override,
                         feature_override=feature_override,
                         spec=spec_slice,
                     )[(self.t_pad_tgt - self.window) : -(self.t_pad_tgt - self.window)]

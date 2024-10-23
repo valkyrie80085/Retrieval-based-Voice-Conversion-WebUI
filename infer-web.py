@@ -1151,7 +1151,14 @@ with gr.Blocks(title="RVC WebUI") as app:
                                 step=0.01,
                                 interactive=True,
                             )
-
+                            block_length = gr.Slider(
+                                minimum=config.x_pad * 2,
+                                maximum=config.x_max + 2 * config.x_query + 1,
+                                label=i18n("Attention block length"),
+                                value=config.x_center,
+                                step=0.01,
+                                interactive=True,
+                            )
                             refresh_button.click(
                                 fn=change_choices,
                                 inputs=[],
@@ -1204,6 +1211,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                                 resample_sr0,
                                 rms_mix_rate0,
                                 protect0,
+                                block_length,
                                 f0_invert_axis,
                                 feature_audio_path,
                                 if_feature_average,
