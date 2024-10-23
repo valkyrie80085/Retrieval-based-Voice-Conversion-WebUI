@@ -454,6 +454,7 @@ class Pipeline(object):
         rms_mix_rate,
         version,
         protect,
+        block_length_override=None,
         f0_invert_axis=None,
         feature_audio=None,
         if_feature_average=False,
