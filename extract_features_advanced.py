@@ -14,7 +14,7 @@ os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
 
 device = "cuda"
 exp_dir = (
-    "D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test"
+    "D:/matthew99/rvc/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test"
 )
 import fairseq
 import numpy as np
@@ -112,7 +112,7 @@ vc_list = (
 
 model_path = "assets/hubert/hubert_base.pt"
 
-modelsPath = "D:/matthew99/AI/singing_ai/downloaded"
+modelsPath = "D:/matthew99/rvc/downloaded"
 wavPath = "%s/0_gt_wavs" % exp_dir
 outPath = "%s/3_feature768" % exp_dir
 os.makedirs(outPath, exist_ok=True)

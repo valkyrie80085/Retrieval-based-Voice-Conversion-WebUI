@@ -561,8 +561,8 @@ def compute_f0(path):
     return f0_mel
 
 
-TARGET_PATH = "C:/datasets/singing_ai/f0_magic/target"
-OTHERS_PATH = "C:/datasets/singing_ai/f0_magic/others"
+TARGET_PATH = "C:/datasets/rvc/f0_magic/target"
+OTHERS_PATH = "C:/datasets/rvc/f0_magic/others"
 
 
 def walk(path):

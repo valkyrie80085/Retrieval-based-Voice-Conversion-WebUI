@@ -7,7 +7,7 @@ os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
 
 device = "cuda"
 exp_dir = (
-    "D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test"
+    "D:/matthew99/rvc/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test"
 )
 import fairseq
 import numpy as np
@@ -26,7 +26,7 @@ from configs.config import Config
 config = Config()
 vc = VC(config)
 vc.enc_q = True
-vc.get_vc("D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/enc_q.pth")
+vc.get_vc("D:/matthew99/rvc/Retrieval-based-Voice-Conversion-WebUI/enc_q.pth")
 
 from f0_magic import resize_with_zeros
 

@@ -32,7 +32,7 @@ from infer.lib.audio import extract_features_new
 
 GET_EXTENDED_FEATURES = False
 
-index_file = None  # "D:/matthew99/AI/singing_ai/Retrieval-based-Voice-Conversion-WebUI/logs/ipa/added_IVF521_Flat_nprobe_1_ipa_v2.index"
+index_file = None  # "D:/matthew99/rvc/Retrieval-based-Voice-Conversion-WebUI/logs/ipa/added_IVF521_Flat_nprobe_1_ipa_v2.index"
 if index_file is not None:
     import faiss
 
