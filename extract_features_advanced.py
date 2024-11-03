@@ -13,9 +13,7 @@ os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
 
 device = "cuda"
-exp_dir = (
-    "D:/matthew99/rvc/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test"
-)
+exp_dir = "D:/matthew99/rvc/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test"
 import fairseq
 import numpy as np
 import soundfile as sf

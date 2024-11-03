@@ -192,8 +192,7 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         to_optimize = [
             param
             for name, param in net_g.named_parameters()
-            if name.startswith("enc_p2.")
-            or name.startswith("dec.")
+            if name.startswith("enc_p2.") or name.startswith("dec.")
         ]
     else:
         if hasattr(net_g, "enc_p2"):
