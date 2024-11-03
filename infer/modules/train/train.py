@@ -291,6 +291,43 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
                     )
                 )
 
+    if False:
+        net_g_tmp = RVC_Model_f0(
+            hps.data.filter_length // 2 + 1,
+            hps.train.segment_size // hps.data.hop_length,
+            **hps.model,
+            is_half=hps.train.fp16_run,
+            sr=hps.sample_rate,
+        )
+        del net_g_tmp.enc_p2
+        if hasattr(net_g_tmp, "module"):
+            logger.info(
+                net_g_tmp.module.load_state_dict(
+                    torch.load(hps.pretrainG, map_location="cpu")["model"]
+                )
+            )  ##测试不加载优化器
+        else:
+            logger.info(
+                net_g_tmp.load_state_dict(
+                    torch.load(hps.pretrainG, map_location="cpu")["model"]
+                )
+            )  ##测试不加载优化器
+        net_g.module.dec.load_state_dict(net_g_tmp.dec.state_dict())
+        del net_g_tmp
+
+        if hasattr(net_d, "module"):
+            logger.info(
+                net_d.module.load_state_dict(
+                    torch.load(hps.pretrainD, map_location="cpu")["model"]
+                )
+            )
+        else:
+            logger.info(
+                net_d.load_state_dict(
+                    torch.load(hps.pretrainD, map_location="cpu")["model"]
+                )
+            )
+
     scheduler_g = torch.optim.lr_scheduler.ExponentialLR(
         optim_g, gamma=hps.train.lr_decay, last_epoch=epoch_str - 2
     )
