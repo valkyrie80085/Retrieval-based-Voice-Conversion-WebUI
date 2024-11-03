@@ -194,7 +194,6 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
             for name, param in net_g.named_parameters()
             if name.startswith("enc_p2.")
             or name.startswith("dec.")
-            and not name.startswith("flow.")
         ]
     else:
         if hasattr(net_g, "enc_p2"):
