@@ -54,11 +54,10 @@ preprocess_noise_amp_d = 0.1
 data_noise_amp_p = 5
 label_noise_amp_p = 0.1
 d_clip_threshold = 4.5
-STUDENT_START_EPOCH = 101
 BATCH_SIZE = 32
 
 USE_TEST_SET = False
-EPOCH_PER_BAK = 10
+EPOCH_PER_BAK = 20
 
 lr_g = 1e-5
 c_loss_factor = 0.5
