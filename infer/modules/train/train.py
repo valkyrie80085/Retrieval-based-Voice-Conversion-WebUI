@@ -244,18 +244,12 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
                 load_opt=False,
             )
             epoch_str = 1
-            optim_g = torch.optim.AdamW(
-                to_optimize,
-                hps.train.learning_rate,
-                betas=hps.train.betas,
-                eps=hps.train.eps,
-            )
         global_step = (epoch_str - 1) * len(train_loader)
         # epoch_str = 1
         # global_step = 0
     except:  # 如果首次不能加载，加载pretrain
-        # traceback.print_exc()
-        import traceback
+#        import traceback
+#        traceback.print_exc()
 
         epoch_str = 1
         global_step = 0
