@@ -45,9 +45,9 @@ def load_checkpoint_d(checkpoint_path, combd, sbd, optimizer=None, load_opt=1):
                 logger.info("%s is not in the checkpoint", k)  # pretrain缺失的
                 new_state_dict[k] = v  # 模型自带的随机值
         if hasattr(model, "module"):
-            model.module.load_state_dict(new_state_dict, strict=strict)
+            model.module.load_state_dict(new_state_dict, strict=False)
         else:
-            model.load_state_dict(new_state_dict, strict=strict)
+            model.load_state_dict(new_state_dict, strict=False)
         return model
 
     go(combd, "combd")
@@ -118,16 +118,14 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, strict=True, load_op
                     saved_state_dict[k].shape,
                 )  #
                 raise KeyError
-            if "enc_p.emb_phone.weight" in k:
         except:
             # logger.info(traceback.format_exc())
             logger.info("%s is not in the checkpoint", k)  # pretrain缺失的
             new_state_dict[k] = v  # 模型自带的随机值
     if hasattr(model, "module"):
-        model.module.load_state_dict(new_state_dict, strict=True)
+        model.module.load_state_dict(new_state_dict, strict=strict)
     else:
-        model.load_state_dict(new_state_dict, strict=True)
-    checkpoint_dict = torch.load(checkpoint_path, map_location="cpu")
+        model.load_state_dict(new_state_dict, strict=strict)
     logger.info("Loaded model weights")
 
     iteration = checkpoint_dict["iteration"]
