@@ -248,8 +248,8 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         # epoch_str = 1
         # global_step = 0
     except:  # 如果首次不能加载，加载pretrain
-#        import traceback
-#        traceback.print_exc()
+        #        import traceback
+        #        traceback.print_exc()
 
         epoch_str = 1
         global_step = 0
