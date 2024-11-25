@@ -511,7 +511,6 @@ def train_and_evaluate(
                         spec,
                         spec_lengths,
                         sid,
-                        train_enc_p2=True,
                     )
                     if TRAIN_ENC_P2
                     else net_g(

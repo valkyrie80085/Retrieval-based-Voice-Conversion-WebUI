@@ -778,7 +778,6 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         y: torch.Tensor,
         y_lengths: torch.Tensor,
         ds: Optional[torch.Tensor] = None,
-        train_enc_p2: bool = False,
     ):  # 这里ds是id，[bs,1]
         # print(1,pitch.shape)#[bs,t]
         g = self.emb_g(ds).unsqueeze(-1)  # [b, 256, 1]##1是t，广播的
@@ -791,7 +790,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         pitchf = commons.slice_segments2(pitchf, ids_slice, self.segment_size)
         # print(-2,pitchf.shape,z_slice.shape)
         o = self.dec(z_slice, pitchf, g=g)
-        if train_enc_p2:
+        if hasattr(self, "enc_p2"):
             return o, ids_slice, x_mask, y_mask, (None, None, m_p, logs_p, m_q, logs_q)
         else:
             z_p = self.flow(z, y_mask, g=g)
