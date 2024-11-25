@@ -97,7 +97,7 @@ def load_checkpoint_d(checkpoint_path, combd, sbd, optimizer=None, load_opt=1):
 #   logger.info("Loaded checkpoint '{}' (epoch {})" .format(
 #     checkpoint_path, iteration))
 #   return model, optimizer, learning_rate, iteration
-def load_checkpoint(checkpoint_path, model, optimizer=None, load_opt=1):
+def load_checkpoint(checkpoint_path, model, optimizer=None, strict=True, load_opt=1):
     assert os.path.isfile(checkpoint_path)
     checkpoint_dict = torch.load(checkpoint_path, map_location="cpu")
 
@@ -123,9 +123,9 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, load_opt=1):
             logger.info("%s is not in the checkpoint", k)  # pretrain缺失的
             new_state_dict[k] = v  # 模型自带的随机值
     if hasattr(model, "module"):
-        model.module.load_state_dict(new_state_dict, strict=False)
+        model.module.load_state_dict(new_state_dict, strict=strict)
     else:
-        model.load_state_dict(new_state_dict, strict=False)
+        model.load_state_dict(new_state_dict, strict=strict)
     logger.info("Loaded model weights")
 
     iteration = checkpoint_dict["iteration"]
