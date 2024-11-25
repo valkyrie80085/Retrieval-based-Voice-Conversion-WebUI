@@ -45,3 +45,5 @@ test.py
 f0_test_tmp.py
 *.index
 *.pth
+f0_big.py
+big_gen.py
