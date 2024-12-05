@@ -3,6 +3,7 @@ import sys
 import traceback
 
 from dotenv import load_dotenv
+
 load_dotenv()
 load_dotenv("sha256.env")
 

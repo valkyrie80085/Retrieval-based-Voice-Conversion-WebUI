@@ -5,6 +5,7 @@ import random
 import shutil
 
 from dotenv import load_dotenv
+
 load_dotenv()
 load_dotenv("sha256.env")
 
