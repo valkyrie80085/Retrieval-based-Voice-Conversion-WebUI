@@ -743,7 +743,7 @@ def train_index(exp_dir1, version19, cluster=True, extended=False):
     big_npy_idx = np.arange(big_npy.shape[0])
     np.random.shuffle(big_npy_idx)
     big_npy = big_npy[big_npy_idx]
-    if (cluster and big_npy.shape[0] > 2e5) or (extended and big_npy.shape[0] > 1e4):
+    if False and (cluster and big_npy.shape[0] > 2e5) or (extended and big_npy.shape[0] > 1e4):
         infos.append("Trying doing kmeans %s shape to 10k centers." % big_npy.shape[0])
         #        yield "\n".join(infos)
         try:
