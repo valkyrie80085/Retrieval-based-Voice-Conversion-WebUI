@@ -2,6 +2,10 @@ import os
 import sys
 import traceback
 
+from dotenv import load_dotenv
+load_dotenv()
+load_dotenv("sha256.env")
+
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
 

@@ -3,7 +3,10 @@ import sys
 import traceback
 import random
 import shutil
+
 from dotenv import load_dotenv
+load_dotenv()
+load_dotenv("sha256.env")
 
 now_dir = os.getcwd()
 sys.path.append(now_dir)

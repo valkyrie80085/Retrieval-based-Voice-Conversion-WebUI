@@ -719,9 +719,9 @@ def train_index(exp_dir1, version19, cluster=True, extended=False):
     exp_dir = "logs/%s" % (exp_dir1)
     os.makedirs(exp_dir, exist_ok=True)
     feature_dir = (
-        "%s/3_feature193" % (exp_dir)
+        "%s/3_feature256" % (exp_dir)
         if version19 == "v1"
-        else "%s/3_feature193" % (exp_dir)
+        else "%s/3_feature768" % (exp_dir)
     )
     if not os.path.exists(feature_dir):
         return "请先进行特征提取!"
