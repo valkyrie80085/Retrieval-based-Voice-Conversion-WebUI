@@ -67,6 +67,7 @@ def clean_path(path_str):
     return path_str.strip(" ").strip('"').strip("\n").strip('"').strip(" ")
 
 
+@torch.inference_mode()
 def extract_features_simple_segment(
     audio, model, version, device, is_half=False, sr=16000
 ):
@@ -83,19 +84,26 @@ def extract_features_simple_segment(
     if feats.dim() == 2:  # double channels
         feats = feats.mean(-1)
     feats = feats.view(1, -1)
-    padding_mask = torch.BoolTensor(feats.shape).fill_(False)
-    inputs = {
-        "source": (
-            feats.half().to(device)
-            if device not in ["mps", "cpu"]
-            else feats.to(device)
-        ),
-        "padding_mask": padding_mask.to(device),
-        "output_layer": 9 if version == "v1" else 12,  # layer 9
-    }
-    with torch.no_grad():
-        logits = model.extract_features(**inputs)
-        feats = model.final_proj(logits[0]) if version == "v1" else logits[0]
+    if version == "mod":
+        feats = model(
+                    feats.half().to(device)
+                    if device not in ["mps", "cpu"]
+                    else feats.to(device)
+                ).last_hidden_state
+    else:
+        padding_mask = torch.BoolTensor(feats.shape).fill_(False)
+        inputs = {
+            "source": (
+                feats.half().to(device)
+                if device not in ["mps", "cpu"]
+                else feats.to(device)
+            ),
+            "padding_mask": padding_mask.to(device),
+            "output_layer": 9 if version == "v1" else 12,  # layer 9
+        }
+        with torch.no_grad():
+            logits = model.extract_features(**inputs)
+            feats = model.final_proj(logits[0]) if version == "v1" else logits[0]
     return feats
 
 

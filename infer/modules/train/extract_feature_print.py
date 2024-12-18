@@ -30,6 +30,8 @@ sys.path.append(now_dir)
 from infer.lib.audio import load_audio
 from infer.lib.audio import extract_features_new
 
+from infer.modules.vc.utils import load_hubert
+
 GET_EXTENDED_FEATURES = False
 
 index_file = None  # "D:/matthew99/rvc/Retrieval-based-Voice-Conversion-WebUI/logs/ipa/added_IVF521_Flat_nprobe_1_ipa_v2.index"
@@ -68,7 +70,6 @@ def printt(strr):
 
 
 printt(" ".join(sys.argv))
-model_path = "assets/hubert/hubert_base.pt"
 
 printt("exp_dir: " + exp_dir)
 wavPath = "%s/1_16k_wavs" % exp_dir
@@ -92,27 +93,7 @@ def readwave(wav_path, normalize=False):
     feats = feats.view(1, -1)
     return feats
 
-
-# HuBERT model
-printt("load model(s) from {}".format(model_path))
-# if hubert model is exist
-if os.access(model_path, os.F_OK) == False:
-    printt(
-        "Error: Extracting is shut down because %s does not exist, you may download it from https://huggingface.co/lj1995/VoiceConversionWebUI/tree/main"
-        % model_path
-    )
-    exit(0)
-models, saved_cfg, task = fairseq.checkpoint_utils.load_model_ensemble_and_task(
-    [model_path],
-    suffix="",
-)
-model = models[0]
-model = model.to(device)
-printt("move model to %s" % device)
-if is_half:
-    if device not in ["mps", "cpu"]:
-        model = model.half()
-model.eval()
+model = load_hubert(version=version, device=device, is_half=is_half)
 
 from infer.lib.rmvpe import RMVPE
 

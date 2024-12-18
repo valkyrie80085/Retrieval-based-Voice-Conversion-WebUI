@@ -49,3 +49,4 @@ av
 torchfcpe
 pyloudnorm
 xitorch
+transformers

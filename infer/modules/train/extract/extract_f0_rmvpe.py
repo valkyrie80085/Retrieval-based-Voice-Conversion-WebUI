@@ -1,3 +1,4 @@
+exit(0)
 import os
 import sys
 import traceback

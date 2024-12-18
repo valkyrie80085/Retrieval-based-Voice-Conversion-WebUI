@@ -1451,7 +1451,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                 )
                 version19 = gr.Radio(
                     label=i18n("版本"),
-                    choices=["v1", "v2"],
+                    choices=["v1", "v2", "mod"],
                     value="v2",
                     interactive=True,
                     visible=True,
@@ -1777,7 +1777,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                     )
                     version_2 = gr.Radio(
                         label=i18n("模型版本型号"),
-                        choices=["v1", "v2"],
+                        choices=["v1", "v2", "mod"],
                         value="v2",
                         interactive=True,
                     )
@@ -1868,7 +1868,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                     )
                     version_1 = gr.Radio(
                         label=i18n("模型版本型号"),
-                        choices=["v1", "v2"],
+                        choices=["v1", "v2", "mod"],
                         value="v2",
                         interactive=True,
                     )

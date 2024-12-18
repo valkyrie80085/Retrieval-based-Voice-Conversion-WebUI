@@ -80,7 +80,7 @@ class VC:
                         )
                     else:
                         self.net_g = SynthesizerTrnMs256NSFsid_nono(*self.cpt["config"])
-                elif self.version == "v2":
+                elif self.version == "v2" or self.version == "mod":
                     if self.if_f0 == 1:
                         self.net_g = SynthesizerTrnMs768NSFsid(
                             *self.cpt["config"], is_half=self.config.is_half
@@ -116,6 +116,8 @@ class VC:
             ("v1", 0): SynthesizerTrnMs256NSFsid_nono,
             ("v2", 1): SynthesizerTrnMs768NSFsid,
             ("v2", 0): SynthesizerTrnMs768NSFsid_nono,
+            ("mod", 1): SynthesizerTrnMs768NSFsid,
+            ("mod", 0): SynthesizerTrnMs768NSFsid_nono,
         }
 
         self.net_g = synthesizer_class.get(
@@ -332,7 +334,7 @@ class VC:
             times = [0, 0, 0]
 
             if self.hubert_model is None:
-                self.hubert_model = load_hubert(self.config)
+                self.hubert_model = load_hubert(self.config, self.version)
 
             if file_index:
                 file_index = (
