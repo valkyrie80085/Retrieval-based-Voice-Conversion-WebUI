@@ -37,8 +37,11 @@ def load_hubert(config=None, version=None, device=None, is_half=None):
             hubert_model = hubert_model.float()
     else:
         from transformers.models.hubert.modeling_hubert import HubertModel
-        hubert_model = HubertModel.from_pretrained("facebook/hubert-base-ls960") 
-        hubert_model.load_state_dict(torch.load("assets/custom/speaker_disentangled_hubert.pt"))  
+
+        hubert_model = HubertModel.from_pretrained("facebook/hubert-base-ls960")
+        hubert_model.load_state_dict(
+            torch.load("assets/custom/speaker_disentangled_hubert.pt")
+        )
         hubert_model = hubert_model.to(device)
         hubert_model = hubert_model.float()
     return hubert_model.eval()
