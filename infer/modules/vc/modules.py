@@ -109,7 +109,11 @@ class VC:
         self.tgt_sr = self.cpt["config"][-1]
         self.cpt["config"][-3] = self.cpt["weight"]["emb_g.weight"].shape[0]  # n_spk
         self.if_f0 = self.cpt.get("f0", 1)
+        old_is_mod = self.version == "mod"
         self.version = self.cpt.get("version", "v1")
+        new_is_mod = self.version == "mod"
+        if old_is_mod != new_is_mod:
+            self.hubert_model = None
 
         synthesizer_class = {
             ("v1", 1): SynthesizerTrnMs256NSFsid,

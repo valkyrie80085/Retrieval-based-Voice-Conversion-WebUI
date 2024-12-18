@@ -71,26 +71,28 @@ def clean_path(path_str):
 def extract_features_simple_segment(
     audio, model, version, device, is_half=False, sr=16000
 ):
-    if sr != 16000:
-        audio = librosa.resample(
-            audio, orig_sr=sr, target_sr=16000
-        )  # , res_type="soxr_vhq"
-
-    feats = torch.from_numpy(audio)
-    if is_half:
-        feats = feats.half()
-    else:
-        feats = feats.float()
-    if feats.dim() == 2:  # double channels
-        feats = feats.mean(-1)
-    feats = feats.view(1, -1)
     if version == "mod":
-        feats = model(
-                    feats.half().to(device)
-                    if device not in ["mps", "cpu"]
-                    else feats.to(device)
-                ).last_hidden_state
+        audio = torch.from_numpy(audio).unsqueeze(0).to(device)
+
+        feats = model(audio).last_hidden_state
+        if is_half:
+            feats = feats.half()
+        else:
+            feats = feats.float()
     else:
+        if sr != 16000:
+            audio = librosa.resample(
+                audio, orig_sr=sr, target_sr=16000
+            )  # , res_type="soxr_vhq"
+
+        feats = torch.from_numpy(audio)
+        if is_half:
+            feats = feats.half()
+        else:
+            feats = feats.float()
+        if feats.dim() == 2:  # double channels
+            feats = feats.mean(-1)
+        feats = feats.view(1, -1)
         padding_mask = torch.BoolTensor(feats.shape).fill_(False)
         inputs = {
             "source": (
