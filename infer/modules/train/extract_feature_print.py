@@ -93,6 +93,7 @@ def readwave(wav_path, normalize=False):
     feats = feats.view(1, -1)
     return feats
 
+
 model = load_hubert(version=version, device=device, is_half=is_half)
 
 from infer.lib.rmvpe import RMVPE
