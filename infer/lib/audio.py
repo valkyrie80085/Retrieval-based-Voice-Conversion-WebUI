@@ -71,8 +71,8 @@ def clean_path(path_str):
 def extract_features_simple_segment(
     audio, model, version, device, is_half=False, sr=16000
 ):
-    if version == "mod":
-        audio = torch.from_numpy(audio).unsqueeze(0).to(device)
+    if version == "v2_mod":
+        audio = torch.from_numpy(audio).unsqueeze(0).to(device).float()
 
         feats = model(audio).last_hidden_state
         if is_half:

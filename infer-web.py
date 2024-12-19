@@ -714,7 +714,7 @@ def click_train(
 
 
 # but4.click(train_index, [exp_dir1], info3)
-def train_index(exp_dir1, version19, cluster=True, extended=False):
+def train_index(exp_dir1, version19, cluster=False, extended=False):
     # exp_dir = "%s/logs/%s" % (now_dir, exp_dir1)
     exp_dir = "logs/%s" % (exp_dir1)
     os.makedirs(exp_dir, exist_ok=True)
@@ -744,8 +744,7 @@ def train_index(exp_dir1, version19, cluster=True, extended=False):
     np.random.shuffle(big_npy_idx)
     big_npy = big_npy[big_npy_idx]
     if (
-        False
-        and (cluster and big_npy.shape[0] > 2e5)
+        (cluster and big_npy.shape[0] > 2e5)
         or (extended and big_npy.shape[0] > 1e4)
     ):
         infos.append("Trying doing kmeans %s shape to 10k centers." % big_npy.shape[0])
@@ -1451,8 +1450,8 @@ with gr.Blocks(title="RVC WebUI") as app:
                 )
                 version19 = gr.Radio(
                     label=i18n("版本"),
-                    choices=["v1", "v2", "mod"],
-                    value="mod",
+                    choices=["v1", "v2", "v2_mod"],
+                    value="v2_mod",
                     interactive=True,
                     visible=True,
                 )
@@ -1777,8 +1776,8 @@ with gr.Blocks(title="RVC WebUI") as app:
                     )
                     version_2 = gr.Radio(
                         label=i18n("模型版本型号"),
-                        choices=["v1", "v2", "mod"],
-                        value="mod",
+                        choices=["v1", "v2", "v2_mod"],
+                        value="v2_mod",
                         interactive=True,
                     )
                 with gr.Row():
@@ -1868,8 +1867,8 @@ with gr.Blocks(title="RVC WebUI") as app:
                     )
                     version_1 = gr.Radio(
                         label=i18n("模型版本型号"),
-                        choices=["v1", "v2", "mod"],
-                        value="mod",
+                        choices=["v1", "v2", "v2_mod"],
+                        value="v2_mod",
                         interactive=True,
                     )
                     info___ = gr.Textbox(

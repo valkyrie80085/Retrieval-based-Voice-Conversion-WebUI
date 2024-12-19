@@ -80,7 +80,7 @@ class VC:
                         )
                     else:
                         self.net_g = SynthesizerTrnMs256NSFsid_nono(*self.cpt["config"])
-                elif self.version == "v2" or self.version == "mod":
+                elif self.version == "v2" or self.version == "v2_mod":
                     if self.if_f0 == 1:
                         self.net_g = SynthesizerTrnMs768NSFsid(
                             *self.cpt["config"], is_half=self.config.is_half
@@ -109,9 +109,9 @@ class VC:
         self.tgt_sr = self.cpt["config"][-1]
         self.cpt["config"][-3] = self.cpt["weight"]["emb_g.weight"].shape[0]  # n_spk
         self.if_f0 = self.cpt.get("f0", 1)
-        old_if_mod = self.version == "mod"
+        old_if_mod = self.version == "v2_mod"
         self.version = self.cpt.get("version", "v1")
-        new_if_mod = self.version == "mod"
+        new_if_mod = self.version == "v2_mod"
         if old_if_mod != new_if_mod:
             self.hubert_model = None
 
@@ -120,8 +120,8 @@ class VC:
             ("v1", 0): SynthesizerTrnMs256NSFsid_nono,
             ("v2", 1): SynthesizerTrnMs768NSFsid,
             ("v2", 0): SynthesizerTrnMs768NSFsid_nono,
-            ("mod", 1): SynthesizerTrnMs768NSFsid,
-            ("mod", 0): SynthesizerTrnMs768NSFsid_nono,
+            ("v2_mod", 1): SynthesizerTrnMs768NSFsid,
+            ("v2_mod", 0): SynthesizerTrnMs768NSFsid_nono,
         }
 
         self.net_g = synthesizer_class.get(

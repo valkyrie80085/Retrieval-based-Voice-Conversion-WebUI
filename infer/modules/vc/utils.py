@@ -24,7 +24,7 @@ def load_hubert(config=None, version=None, device=None, is_half=None):
     if config is not None:
         device = config.device
         is_half = config.is_half
-    if version != "mod":
+    if version != "v2_mod":
         models, _, _ = checkpoint_utils.load_model_ensemble_and_task(
             ["assets/hubert/hubert_base.pt"],
             suffix="",

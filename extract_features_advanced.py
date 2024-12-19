@@ -43,29 +43,10 @@ vc = VC(config)
 from f0_magic import resize_with_zeros
 from infer.lib.audio import pitch_blur
 
-version = "v2"
+version = "v2_mod"
 
-model_path = "assets/hubert/hubert_base.pt"
-# HuBERT model
-print("load model(s) from {}".format(model_path))
-# if hubert model is exist
-if os.access(model_path, os.F_OK) == False:
-    print(
-        "Error: Extracting is shut down because %s does not exist, you may download it from https://huggingface.co/lj1995/VoiceConversionWebUI/tree/main"
-        % model_path
-    )
-    exit(0)
-models, saved_cfg, task = fairseq.checkpoint_utils.load_model_ensemble_and_task(
-    [model_path],
-    suffix="",
-)
-model = models[0]
-model = model.to(device)
-print("move model to %s" % device)
-if config.is_half:
-    if device not in ["mps", "cpu"]:
-        model = model.half()
-model.eval()
+from infer.modules.vc.utils import load_hubert
+model = load_hubert(config=config, version=version)
 
 
 model_rmvpe = None
