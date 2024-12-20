@@ -742,7 +742,7 @@ def train_index(exp_dir1, version19, cluster=True, extended=False):
     big_npy = np.concatenate(npys, 0)
     big_npy_idx = np.arange(big_npy.shape[0])
     np.random.shuffle(big_npy_idx)
-    big_npy = big_npy[big_npy_idx]
+    big_npy = big_npy[big_npy_idx[:200000]]
     if (
         (cluster and big_npy.shape[0] > 2e5)
         or (extended and big_npy.shape[0] > 1e4)
@@ -1451,7 +1451,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                 version19 = gr.Radio(
                     label=i18n("版本"),
                     choices=["v1", "v2", "v2_mod"],
-                    value="v2_mod",
+                    value="v2",
                     interactive=True,
                     visible=True,
                 )
@@ -1777,7 +1777,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                     version_2 = gr.Radio(
                         label=i18n("模型版本型号"),
                         choices=["v1", "v2", "v2_mod"],
-                        value="v2_mod",
+                        value="v2",
                         interactive=True,
                     )
                 with gr.Row():
@@ -1868,7 +1868,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                     version_1 = gr.Radio(
                         label=i18n("模型版本型号"),
                         choices=["v1", "v2", "v2_mod"],
-                        value="v2_mod",
+                        value="v2",
                         interactive=True,
                     )
                     info___ = gr.Textbox(
