@@ -45,6 +45,7 @@ from infer.lib.audio import pitch_blur
 version = "v2"
 
 from infer.modules.vc.utils import load_hubert
+
 model = load_hubert(config=config, version=version)
 
 from nansy import change_gender_smart, random_eq, random_formant_f0
@@ -100,11 +101,13 @@ for idx, file in enumerate(todo):
 idx = 0
 n = max(1, total // 100)
 
+
 def perturb_waveform(waveform: np.ndarray, sr: int = 16000) -> np.ndarray:
     perturbed_waveform = random_formant_f0(waveform, sr)
     perturbed_waveform = random_eq(perturbed_waveform, sr)
     return np.clip(perturbed_waveform, -1.0, 1.0)
-     
+
+
 for file in vc_todos:
     try:
         idx += 1

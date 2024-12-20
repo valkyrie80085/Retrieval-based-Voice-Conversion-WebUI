@@ -48,7 +48,9 @@ def _load_waveform(root: str, filename: str, exp_sr: int = 16000):
     return wav
 
 
-def change_gender_smart(x: np.ndarray, sr: int = 16000, lo=65, hi=400, f0_threshold=155):
+def change_gender_smart(
+    x: np.ndarray, sr: int = 16000, lo=65, hi=400, f0_threshold=155
+):
     """
     See praat documentation:
     https://www.fon.hum.uva.nl/praat/manual/Sound__To_Pitch__filtered_ac____.html
@@ -59,7 +61,9 @@ def change_gender_smart(x: np.ndarray, sr: int = 16000, lo=65, hi=400, f0_thresh
     lo, hi, ratio_fs, new_f0_med, ratio_pr = 100, 400, 1 / 1.1, 100, 1 / 1.2
 
     try:
-        ss = parselmouth.praat.call(s, "Change gender", lo, hi, ratio_fs, new_f0_med, ratio_pr, 1.0)
+        ss = parselmouth.praat.call(
+            s, "Change gender", lo, hi, ratio_fs, new_f0_med, ratio_pr, 1.0
+        )
     except:
         return np.copy(x)
 
@@ -68,7 +72,9 @@ def change_gender_smart(x: np.ndarray, sr: int = 16000, lo=65, hi=400, f0_thresh
 
 def change_gender(x, fs, lo, hi, ratio_fs, new_f0_med, ratio_pr):
     s = parselmouth.Sound(x, sampling_frequency=fs)
-    ss = parselmouth.praat.call(s, "Change gender", lo, hi, ratio_fs, new_f0_med, ratio_pr, 1.0)
+    ss = parselmouth.praat.call(
+        s, "Change gender", lo, hi, ratio_fs, new_f0_med, ratio_pr, 1.0
+    )
     return ss.values.squeeze(0)
 
 
@@ -251,15 +257,15 @@ def random_eq(wav, sr: int = 16000):
 
 
 def random_formant_f0(wav, sr):
-    #s = parselmouth.Sound(wav, sampling_frequency=sr)
+    # s = parselmouth.Sound(wav, sampling_frequency=sr)
     lo, hi = 100, 400
-    
+
     ratio_fs = 1 / np.random.uniform(1, 1.4)
-    
+
     new_f0_med = np.random.uniform(100, 150)
-    
+
     ratio_pr = 1 / np.random.uniform(1, 1.5)
-    
+
     ss = change_gender(wav, sr, lo, hi, ratio_fs, new_f0_med, ratio_pr)
-    
+
     return ss

@@ -46,6 +46,7 @@ from infer.lib.audio import pitch_blur
 version = "v2_mod"
 
 from infer.modules.vc.utils import load_hubert
+
 model = load_hubert(config=config, version=version)
 
 
