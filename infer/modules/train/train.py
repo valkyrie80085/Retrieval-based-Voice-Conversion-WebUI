@@ -189,11 +189,12 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
     if torch.cuda.is_available():
         net_d = net_d.cuda(rank)
     if TRAIN_ENC_P2:
-        to_optimize = [
-            param
-            for name, param in net_g.named_parameters()
-            if name.startswith("enc_p2.") or name.startswith("dec.")
-        ]
+#        to_optimize = [
+#            param
+#            for name, param in net_g.named_parameters()
+#            if name.startswith("enc_p2.") or name.startswith("dec.")
+#        ]
+        to_optimize = net_g.parameters()
     else:
         if hasattr(net_g, "enc_p2"):
             del net_g.enc_p2
