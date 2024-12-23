@@ -761,11 +761,13 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
             _ = 2
             while True:
                 if hasattr(self, f"enc_p{_}"):
-                    x = getattr(self, f"enc_p{_}")(x, pitch, lengths, skip_head)
+                    m_p, logs_p, x_mask = getattr(self, f"enc_p{_}")(x, pitch, lengths, skip_head)
+                    x = (m_p + torch.exp(logs_p) * torch.randn_like(m_p) * 0.66666) * x_mask
+                    x = torch.transpose(x, 1, -1)
                 else:
                     break
                 _ += 1
-            return x
+            return m_p, logs_p, x_mask
         else:
             return self.enc_p(
                 phone,
