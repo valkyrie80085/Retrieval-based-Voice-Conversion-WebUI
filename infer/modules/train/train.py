@@ -194,11 +194,11 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
             break
         _ += 1
     if TRAIN_ENC_P2:
-#        to_optimize = [
-#            param
-#            for name, param in net_g.named_parameters()
-#            if name.startswith(f"enc_p{_ - 1}.") or name.startswith("dec.")
-#        ]
+        #        to_optimize = [
+        #            param
+        #            for name, param in net_g.named_parameters()
+        #            if name.startswith(f"enc_p{_ - 1}.") or name.startswith("dec.")
+        #        ]
         to_optimize = net_g.parameters()
     else:
         for __ in range(2, _):
