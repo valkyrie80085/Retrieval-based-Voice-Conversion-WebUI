@@ -645,7 +645,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
         spk_embed_dim,
         gin_channels,
         sr,
-        **kwargs
+        **kwargs,
     ):
         super(SynthesizerTrnMs256NSFsid, self).__init__()
         if isinstance(sr, str):
@@ -921,7 +921,7 @@ class SynthesizerTrnMs768NSFsid(SynthesizerTrnMs256NSFsid):
         spk_embed_dim,
         gin_channels,
         sr,
-        **kwargs
+        **kwargs,
     ):
         super(SynthesizerTrnMs768NSFsid, self).__init__(
             spec_channels,
@@ -942,7 +942,7 @@ class SynthesizerTrnMs768NSFsid(SynthesizerTrnMs256NSFsid):
             spk_embed_dim,
             gin_channels,
             sr,
-            **kwargs
+            **kwargs,
         )
         del self.enc_p
         self.enc_p = TextEncoder(
@@ -988,7 +988,7 @@ class SynthesizerTrnMs256NSFsid_nono(nn.Module):
         spk_embed_dim,
         gin_channels,
         sr=None,
-        **kwargs
+        **kwargs,
     ):
         super(SynthesizerTrnMs256NSFsid_nono, self).__init__()
         self.spec_channels = spec_channels
@@ -1146,7 +1146,7 @@ class SynthesizerTrnMs768NSFsid_nono(SynthesizerTrnMs256NSFsid_nono):
         spk_embed_dim,
         gin_channels,
         sr=None,
-        **kwargs
+        **kwargs,
     ):
         super(SynthesizerTrnMs768NSFsid_nono, self).__init__(
             spec_channels,
@@ -1167,7 +1167,7 @@ class SynthesizerTrnMs768NSFsid_nono(SynthesizerTrnMs256NSFsid_nono):
             spk_embed_dim,
             gin_channels,
             sr,
-            **kwargs
+            **kwargs,
         )
         del self.enc_p
         self.enc_p = TextEncoder(
