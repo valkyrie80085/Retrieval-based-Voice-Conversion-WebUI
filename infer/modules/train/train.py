@@ -188,16 +188,21 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
     net_d = MultiPeriodDiscriminator(hps.model.use_spectral_norm)
     if torch.cuda.is_available():
         net_d = net_d.cuda(rank)
+    _ = 2
+    while True:
+        if not hasattr(net_g, f"enc_p{_}"):
+            break
+        _ += 1
     if TRAIN_ENC_P2:
 #        to_optimize = [
 #            param
 #            for name, param in net_g.named_parameters()
-#            if name.startswith("enc_p2.") or name.startswith("dec.")
+#            if name.startswith(f"enc_p{_ - 1}.") or name.startswith("dec.")
 #        ]
         to_optimize = net_g.parameters()
     else:
-        if hasattr(net_g, "enc_p2"):
-            del net_g.enc_p2
+        for __ in range(2, _):
+            delattr(net_g, f"enc_p{__}")
         to_optimize = net_g.parameters()
     optim_g = torch.optim.AdamW(
         to_optimize,
