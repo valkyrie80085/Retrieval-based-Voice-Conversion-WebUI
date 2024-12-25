@@ -13,7 +13,7 @@ from f0_magic_new_diff import (
 from f0_magic_new_diff import postprocess, preprocess, padding_size
 from f0_magic_gen_diff import PitchContourGenerator, segment_size
 from f0_magic_new_diff import snap
-from f0_magic_new_diff import num_timesteps, sample, get_noise
+from f0_magic_new_diff import num_timesteps, sample, get_noise, sample_new
 
 import random
 import os
@@ -109,6 +109,39 @@ input_phone_diff_tensor = torch.tensor(
     input_phone_diff_pad, dtype=torch.float32, device="cuda"
 )
 # input_contour_mel_tensor += torch.randn_like(input_contour_mel_tensor) * noise_amp
+
+if False:
+    if noise_level < num_timesteps:
+        modified_contour_mel_tensor = get_noise(
+            starter_contour_mel_tensor,
+            torch.tensor(noise_level, device=starter_contour_mel_tensor.device).reshape(1),
+            unnormalize=False,
+        )
+    else:
+        modified_contour_mel_tensor = torch.randn_like(starter_contour_mel_tensor)
+    input_contour_mel_tensor_clone = input_contour_mel_tensor.clone()
+    input_contour_mel_tensor = torch.zeros_like(input_contour_mel_tensor)
+    for t in reversed(range(noise_level)):
+        #    last = modified_contour_mel_tensor.clone()
+        t_tensor = torch.tensor(t, device=modified_contour_mel_tensor.device).reshape(1)
+        input_contour_mel_tensor, modified_contour_mel_tensor = sample_new(
+                model,
+                modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0),
+                input_phone_diff_tensor.unsqueeze(0).unsqueeze(0),
+                input_contour_mel_tensor.unsqueeze(0).unsqueeze(0),
+                input_contour_mel_tensor_clone.unsqueeze(0).unsqueeze(0),
+                t_tensor,
+            )
+        input_contour_mel_tensor = input_contour_mel_tensor.detach().squeeze(0).squeeze(0)
+        modified_contour_mel_tensor = modified_contour_mel_tensor.detach().squeeze(0).squeeze(0)
+        from torch.nn import functional as F
+
+        #    print(t, F.mse_loss(postprocess(modified_contour_mel_tensor), postprocess(last)))
+        print(
+            t,
+            F.mse_loss(postprocess(modified_contour_mel_tensor), input_contour_mel_tensor_clone),
+        )
+
 if snap_sensitivity is not None:
     input_contour_mel_tensor = snap(input_contour_mel_tensor, snap_sensitivity)
 if noise_level < num_timesteps:
