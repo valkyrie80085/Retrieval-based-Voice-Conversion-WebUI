@@ -131,7 +131,14 @@ def get_noise(x, t, unnormalize=True):
 
 
 def sample_new(model, x_t, d, p, p_orig, t):
-    x_start = model(preprocess(x_t * std_p + mn_p, d, p_orig + p * extract(one_minus_sqrt_alphas_cumprod, t, p.shape)), t)
+    x_start = model(
+        preprocess(
+            x_t * std_p + mn_p,
+            d,
+            p_orig + p * extract(one_minus_sqrt_alphas_cumprod, t, p.shape),
+        ),
+        t,
+    )
     x_start = (postprocess(x_start) - mn_p) / std_p
     mean = (
         extract(posterior_mean_coef1, t, x_t.shape) * x_start
@@ -140,7 +147,11 @@ def sample_new(model, x_t, d, p, p_orig, t):
     log_variance = extract(posterior_log_variance_clipped, t, x_t.shape)
     noise = torch.randn_like(x_t)
     noise[t < eps] = 0
-    return extract(posterior_mean_coef1, t, x_t.shape) * postprocess(x_start) + extract(posterior_mean_coef2, t, x_t.shape) * p, mean + (0.5 * log_variance).exp() * noise
+    return (
+        extract(posterior_mean_coef1, t, x_t.shape) * postprocess(x_start)
+        + extract(posterior_mean_coef2, t, x_t.shape) * p,
+        mean + (0.5 * log_variance).exp() * noise,
+    )
 
 
 def sample(model, x_t, d, p, t):

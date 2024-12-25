@@ -114,7 +114,9 @@ if False:
     if noise_level < num_timesteps:
         modified_contour_mel_tensor = get_noise(
             starter_contour_mel_tensor,
-            torch.tensor(noise_level, device=starter_contour_mel_tensor.device).reshape(1),
+            torch.tensor(noise_level, device=starter_contour_mel_tensor.device).reshape(
+                1
+            ),
             unnormalize=False,
         )
     else:
@@ -125,21 +127,27 @@ if False:
         #    last = modified_contour_mel_tensor.clone()
         t_tensor = torch.tensor(t, device=modified_contour_mel_tensor.device).reshape(1)
         input_contour_mel_tensor, modified_contour_mel_tensor = sample_new(
-                model,
-                modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0),
-                input_phone_diff_tensor.unsqueeze(0).unsqueeze(0),
-                input_contour_mel_tensor.unsqueeze(0).unsqueeze(0),
-                input_contour_mel_tensor_clone.unsqueeze(0).unsqueeze(0),
-                t_tensor,
-            )
-        input_contour_mel_tensor = input_contour_mel_tensor.detach().squeeze(0).squeeze(0)
-        modified_contour_mel_tensor = modified_contour_mel_tensor.detach().squeeze(0).squeeze(0)
+            model,
+            modified_contour_mel_tensor.unsqueeze(0).unsqueeze(0),
+            input_phone_diff_tensor.unsqueeze(0).unsqueeze(0),
+            input_contour_mel_tensor.unsqueeze(0).unsqueeze(0),
+            input_contour_mel_tensor_clone.unsqueeze(0).unsqueeze(0),
+            t_tensor,
+        )
+        input_contour_mel_tensor = (
+            input_contour_mel_tensor.detach().squeeze(0).squeeze(0)
+        )
+        modified_contour_mel_tensor = (
+            modified_contour_mel_tensor.detach().squeeze(0).squeeze(0)
+        )
         from torch.nn import functional as F
 
         #    print(t, F.mse_loss(postprocess(modified_contour_mel_tensor), postprocess(last)))
         print(
             t,
-            F.mse_loss(postprocess(modified_contour_mel_tensor), input_contour_mel_tensor_clone),
+            F.mse_loss(
+                postprocess(modified_contour_mel_tensor), input_contour_mel_tensor_clone
+            ),
         )
 
 if snap_sensitivity is not None:
