@@ -1592,7 +1592,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                         maximum=50,
                         step=1,
                         label=i18n("保存频率save_every_epoch"),
-                        value=50,
+                        value=5,
                         interactive=True,
                     )
                     total_epoch11 = gr.Slider(
