@@ -7,6 +7,7 @@ import numpy as np
 import av
 from io import BytesIO
 import traceback
+import re
 
 import torch, torchcrepe
 
@@ -64,6 +65,7 @@ def load_audio(file, sr):
 def clean_path(path_str):
     if platform.system() == "Windows":
         path_str = path_str.replace("/", "\\")
+    path_str = re.sub(r'[\u202a\u202b\u202c\u202d\u202e]', '', path_str)  # 移除 Unicode 控制字符
     return path_str.strip(" ").strip('"').strip("\n").strip('"').strip(" ")
 
 

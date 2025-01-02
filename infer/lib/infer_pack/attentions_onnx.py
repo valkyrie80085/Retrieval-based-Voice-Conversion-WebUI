@@ -1,3 +1,11 @@
+############################## Warning! ##############################
+#                                                                    #
+#           Onnx Export Not Support All Of Non-Torch Types           #
+#           Include Python Built-in Types!!!!!!!!!!!!!!!!!           #
+#                   If You Want TO Change This File                  #
+#                  Do Not Use All Of Non-Torch Types!                #
+#                                                                    #
+############################## Warning! ##############################
 import copy
 import math
 from typing import Optional
@@ -245,9 +253,6 @@ class MultiHeadAttention(nn.Module):
 
         scores = torch.matmul(query / math.sqrt(self.k_channels), key.transpose(-2, -1))
         if self.window_size is not None:
-            assert (
-                t_s == t_t
-            ), "Relative attention is only available for self-attention."
             key_relative_embeddings = self._get_relative_embeddings(self.emb_rel_k, t_s)
             rel_logits = self._matmul_with_relative_keys(
                 query / math.sqrt(self.k_channels), key_relative_embeddings
@@ -305,20 +310,18 @@ class MultiHeadAttention(nn.Module):
         ret = torch.matmul(x, y.unsqueeze(0).transpose(-2, -1))
         return ret
 
-    def _get_relative_embeddings(self, relative_embeddings, length: int):
+    def _get_relative_embeddings(self, relative_embeddings, length):
         max_relative_position = 2 * self.window_size + 1
         # Pad first before slice to avoid using cond ops.
-        pad_length: int = max(length - (self.window_size + 1), 0)
-        slice_start_position = max((self.window_size + 1) - length, 0)
+
+        pad_length = torch.clamp(length - (self.window_size + 1), min=0)
+        slice_start_position = torch.clamp((self.window_size + 1) - length, min=0)
         slice_end_position = slice_start_position + 2 * length - 1
-        if pad_length > 0:
-            padded_relative_embeddings = F.pad(
-                relative_embeddings,
-                # commons.convert_pad_shape([[0, 0], [pad_length, pad_length], [0, 0]]),
-                [0, 0, pad_length, pad_length, 0, 0],
-            )
-        else:
-            padded_relative_embeddings = relative_embeddings
+        padded_relative_embeddings = F.pad(
+            relative_embeddings,
+            # commons.convert_pad_shape([[0, 0], [pad_length, pad_length], [0, 0]]),
+            [0, 0, pad_length, pad_length, 0, 0],
+        )
         used_relative_embeddings = padded_relative_embeddings[
             :, slice_start_position:slice_end_position
         ]
@@ -341,7 +344,6 @@ class MultiHeadAttention(nn.Module):
         x_flat = x.view([batch, heads, length * 2 * length])
         x_flat = F.pad(
             x_flat,
-            # commons.convert_pad_shape([[0, 0], [0, 0], [0, int(length) - 1]])
             [0, length - 1, 0, 0, 0, 0],
         )
 
@@ -360,20 +362,18 @@ class MultiHeadAttention(nn.Module):
         # padd along column
         x = F.pad(
             x,
-            # commons.convert_pad_shape([[0, 0], [0, 0], [0, 0], [0, int(length) - 1]])
             [0, length - 1, 0, 0, 0, 0, 0, 0],
         )
-        x_flat = x.view([batch, heads, (length**2) + (length * (length - 1))])
+        x_flat = x.view([batch, heads, length*length + length * (length - 1)])
         # add 0's in the beginning that will skew the elements after reshape
         x_flat = F.pad(
             x_flat,
-            #    commons.convert_pad_shape([[0, 0], [0, 0], [int(length), 0]])
             [length, 0, 0, 0, 0, 0],
         )
         x_final = x_flat.view([batch, heads, length, 2 * length])[:, :, :, 1:]
         return x_final
 
-    def _attention_bias_proximal(self, length: int):
+    def _attention_bias_proximal(self, length):
         """Bias for self-attention to encourage attention to close positions.
         Args:
           length: an integer scalar.
@@ -435,8 +435,8 @@ class FFN(nn.Module):
     def _causal_padding(self, x):
         if self.kernel_size == 1:
             return x
-        pad_l: int = self.kernel_size - 1
-        pad_r: int = 0
+        pad_l = self.kernel_size - 1
+        pad_r = 0
         # padding = [[0, 0], [0, 0], [pad_l, pad_r]]
         x = F.pad(
             x,
@@ -448,8 +448,8 @@ class FFN(nn.Module):
     def _same_padding(self, x):
         if self.kernel_size == 1:
             return x
-        pad_l: int = (self.kernel_size - 1) // 2
-        pad_r: int = self.kernel_size // 2
+        pad_l = (self.kernel_size - 1) // 2
+        pad_r = self.kernel_size // 2
         # padding = [[0, 0], [0, 0], [pad_l, pad_r]]
         x = F.pad(
             x,
