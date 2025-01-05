@@ -84,9 +84,11 @@ def add_noise(contour, amp=5, scale=1):
     return contour_with_noise
 
 
-def feature_blur(feats):
-    from scipy.ndimage import gaussian_filter1d
-    return gaussian_filter1d(feats, sigma=25, axis=0)
+def perturb_waveform(waveform: np.ndarray, sr: int = 16000) -> np.ndarray:
+    from nansy import change_gender_smart, random_eq, random_formant_f0
+    perturbed_waveform = random_formant_f0(waveform, sr)
+    perturbed_waveform = random_eq(perturbed_waveform, sr)
+    return np.clip(perturbed_waveform, -1.0, 1.0)
 
 
 vc_list = (
@@ -171,37 +173,43 @@ for i in range(len(vc_list)):
                     os.remove(f0_npy_path)
                     audio = opt / max(np.abs(opt).max(), 32768)
 
-                feats = extract_features_simple_segment(
-                    audio, model=model, version=version, device=device
-                ).squeeze(0).float().cpu().numpy()
+                if vc_name is None:
+                    feats = extract_features_simple_segment(
+                        perturb_waveform(load_audio(wav_path, 16000)) if random.randint(0, 1) == 0 else load_audio(wav_path, 16000), model=model, version=version, device=device
+                    ).squeeze(0).float().cpu().numpy()
+                else:
+                    feats = extract_features_simple_segment(
+                        audio, model=model, version=version, device=device
+                    ).squeeze(0).float().cpu().numpy()
 
-                f0_resized = resize_with_zeros(f0_orig, feats.shape[0])
+                    f0_resized = resize_with_zeros(f0_orig, feats.shape[0])
 
-                feats_original = extract_features_simple_segment(
-                    load_audio(wav_path, 16000), model=model, version=version, device=device
-                ).squeeze(0).float().cpu().numpy()
+                    feats_original = extract_features_simple_segment(
+                        perturb_waveform(load_audio(wav_path, 16000)) if random.randint(0, 1) == 0 else load_audio(wav_path, 16000), model=model, version=version, device=device
+                    ).squeeze(0).float().cpu().numpy()
 
-                feats_diff = np.pad(np.linalg.norm(feats_original[:-1] - feats_original[1:], axis=1), (1, 0))
+                    feats_diff = np.pad(np.linalg.norm(feats_original[:-1] - feats_original[1:], axis=1), (1, 0))
+                    feats_diff = np.maximum(feats_diff, np.pad(np.linalg.norm(feats[:-1] - feats[1:], axis=1), (1, 0)))
 
-                good = True
-                flag = True
-                count = 0
-                for i in reversed(range(feats.shape[0])):
-                    if f0_resized[i] < 0.001:
-                        good = True
-                        flag = False
-                        count = 0
-                    else:
-                        if feats_diff[i] > 3.5:
-                            if flag:
-                                good = False
-                        elif feats_diff[i] < 3:
-                            flag = True
-                        count += 1
-                        if count > 10:
-                            flag = True
-                    if not good:
-                        feats[i] = feats_original[i]
+                    good = True
+                    flag = True
+                    count = 0
+                    for i in reversed(range(feats.shape[0])):
+                        if f0_resized[i] < 0.001:
+                            good = True
+                            flag = False
+                            count = 0
+                        else:
+                            if feats_diff[i] > 3.5:
+                                if flag:
+                                    good = False
+                            elif feats_diff[i] < 3:
+                                flag = True
+                            count += 1
+                            if count > 10:
+                                flag = True
+                        if not good:
+                            feats[i] = feats_original[i]
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)
