@@ -150,7 +150,7 @@ for i in range(len(vc_list)):
             try:
                 np.load(out_path)
             except:
-                f0_orig = compute_f0(wav_path)
+                f0_orig = np.load(f0_path)
                 if vc_name is None:
                     audio = load_audio(wav_path, 16000)
                 else:
@@ -159,7 +159,6 @@ for i in range(len(vc_list)):
                     #                        amp=random.uniform(0, 20),
                     #                        scale=random.randint(3, 10),
                     #                    )
-                    f0 = np.load(f0_path)
                     f0 = f0_orig * (2 ** ((shift - random.uniform(0, 3)) / 12))
                     f0 = np.pad(f0, (300, 300))
                     np.save(f0_npy_path, f0, allow_pickle=False)
@@ -182,21 +181,22 @@ for i in range(len(vc_list)):
                     os.remove(f0_npy_path)
                     audio = opt / max(np.abs(opt).max(), 32768)
 
+                feats_perturbed = extract_features_simple_segment(
+                    perturb_waveform(load_audio(wav_path, 16000)) if random.randint(0, 1) == 0 else load_audio(wav_path, 16000), model=model, version=version, device=device
+                ).squeeze(0).float().cpu().numpy()
+
+                feats_original = extract_features_simple_segment(
+                    load_audio(wav_path, 16000), model=model, version=version, device=device
+                ).squeeze(0).float().cpu().numpy()
+
+                f0_resized = resize_with_zeros(f0_orig, feats_original.shape[0])
+
                 if vc_name is None:
-                    feats = extract_features_simple_segment(
-#                        perturb_waveform(load_audio(wav_path, 16000)) if random.randint(0, 1) == 0 else 
-                        load_audio(wav_path, 16000), model=model, version=version, device=device
-                    ).squeeze(0).float().cpu().numpy()
+                    feats = feats_perturbed
+                    feats[f0_resized < 0.001] = feats_original[f0_resized < 0.001]
                 else:
                     feats = extract_features_simple_segment(
                         audio, model=model, version=version, device=device
-                    ).squeeze(0).float().cpu().numpy()
-
-                    f0_resized = resize_with_zeros(f0_orig, feats.shape[0])
-
-                    feats_original = extract_features_simple_segment(
-#                        perturb_waveform(load_audio(wav_path, 16000)) if random.randint(0, 1) == 0 else 
-                        load_audio(wav_path, 16000), model=model, version=version, device=device
                     ).squeeze(0).float().cpu().numpy()
 
                     feat = feats_original + feature_blur(feats) - feature_blur(feats_original)
@@ -222,7 +222,7 @@ for i in range(len(vc_list)):
                             if count > 10:
                                 flag = True
                         if not good:
-                            feats[i] = feats_original[i]
+                            feats[i] = feats_perturbed[i]
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)
