@@ -99,6 +99,7 @@ model_path = "assets/hubert/hubert_base.pt"
 modelsPath = "D:/matthew99/rvc/downloaded"
 wavPath = "%s/0_gt_wavs" % exp_dir
 outPath = "%s/3_feature768" % exp_dir
+f0Path = "%s/2b-f0nsf" % exp_dir
 os.makedirs(outPath, exist_ok=True)
 
 todo = sorted(list(os.listdir(wavPath)))
@@ -129,6 +130,7 @@ for i in range(len(vc_list)):
             idx += 1
             wav_path = "%s/%s" % (wavPath, file)
             out_path = "%s/%s" % (outPath, file.replace("wav", "npy"))
+            f0_path = "%s/%s" % (f0Path, file + ".npy")
             f0_npy_path = "%s/%s" % (outPath, file + ".npy")
             try:
                 np.load(out_path)
@@ -141,7 +143,7 @@ for i in range(len(vc_list)):
                     #                        amp=random.uniform(0, 20),
                     #                        scale=random.randint(3, 10),
                     #                    )
-                    f0 = compute_f0(wav_path)
+                    f0 = np.load(f0_path)
                     f0 = f0 * (2 ** ((shift - random.uniform(0, 3)) / 12))
                     f0 = np.pad(f0, (300, 300))
                     np.save(f0_npy_path, f0, allow_pickle=False)

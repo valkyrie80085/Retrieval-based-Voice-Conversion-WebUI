@@ -47,3 +47,4 @@ f0_test_tmp.py
 *.pth
 f0_big.py
 big_gen.py
+recomposer.py

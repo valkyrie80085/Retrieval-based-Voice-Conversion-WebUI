@@ -530,9 +530,13 @@ def compute_f0_inference(path, index_file=""):
     return f0
 
 
-def compute_f0(path):
-    print("computing f0 for: " + path)
-    x = load_audio(path, sr)
+def compute_f0(path=None, x=None, sr=None, fast=False):
+    if path is not None:
+        print("computing f0 for: " + path)
+        x = load_audio(path, sr)
+    else:
+        print(f"computing f0 for audio with sr={sr}")
+        assert x is not None
 
     global model_rmvpe
     if model_rmvpe is None:
@@ -542,49 +546,50 @@ def compute_f0(path):
         model_rmvpe = RMVPE("assets/rmvpe/rmvpe.pt", is_half=False, device="cuda")
     f0 = model_rmvpe.infer_from_audio(x, thred=0.03)
 
-    # Pick a batch size that doesn't cause memory errors on your gpu
-    torch_device_index = 0
-    torch_device = None
-    if torch.cuda.is_available():
-        torch_device = torch.device(
-            f"cuda:{torch_device_index % torch.cuda.device_count()}"
+    if not fast:
+        # Pick a batch size that doesn't cause memory errors on your gpu
+        torch_device_index = 0
+        torch_device = None
+        if torch.cuda.is_available():
+            torch_device = torch.device(
+                f"cuda:{torch_device_index % torch.cuda.device_count()}"
+            )
+        elif torch.backends.mps.is_available():
+            torch_device = torch.device("mps")
+        else:
+            torch_device = torch.device("cpu")
+        model = "full"
+        batch_size = 512
+        # Compute pitch using first gpu
+        audio_tensor = torch.tensor(np.copy(x))[None].float()
+        f0_crepe, pd = torchcrepe.predict(
+            audio_tensor,
+            16000,
+            160,
+            50,
+            1100,
+            model,
+            batch_size=batch_size,
+            device=torch_device,
+            return_periodicity=True,
         )
-    elif torch.backends.mps.is_available():
-        torch_device = torch.device("mps")
-    else:
-        torch_device = torch.device("cpu")
-    model = "full"
-    batch_size = 512
-    # Compute pitch using first gpu
-    audio_tensor = torch.tensor(np.copy(x))[None].float()
-    f0_crepe, pd = torchcrepe.predict(
-        audio_tensor,
-        16000,
-        160,
-        50,
-        1100,
-        model,
-        batch_size=batch_size,
-        device=torch_device,
-        return_periodicity=True,
-    )
-    pd = torchcrepe.filter.median(pd, 3)
-    f0_crepe = torchcrepe.filter.mean(f0_crepe, 3)
-    f0_crepe[pd < 0.1] = 0
-    f0_crepe = f0_crepe[0].cpu().numpy()
-    f0_crepe = f0_crepe[1:]  # Get rid of extra first frame
+        pd = torchcrepe.filter.median(pd, 3)
+        f0_crepe = torchcrepe.filter.mean(f0_crepe, 3)
+        f0_crepe[pd < 0.1] = 0
+        f0_crepe = f0_crepe[0].cpu().numpy()
+        f0_crepe = f0_crepe[1:]  # Get rid of extra first frame
 
-    # Resize the pitch
-    target_len = f0.shape[0]
-    f0_crepe = resize_with_zeros(f0_crepe, target_len)
+        # Resize the pitch
+        target_len = f0.shape[0]
+        f0_crepe = resize_with_zeros(f0_crepe, target_len)
 
-    f0_rmvpe_mel = np.log(1 + f0 / 700)
-    f0_crepe_mel = np.log(1 + f0_crepe / 700)
-    f0 = np.where(
-        np.logical_and(f0_rmvpe_mel > eps, f0_crepe_mel - f0_rmvpe_mel > 0.05),
-        f0_crepe,
-        f0,
-    )
+        f0_rmvpe_mel = np.log(1 + f0 / 700)
+        f0_crepe_mel = np.log(1 + f0_crepe / 700)
+        f0 = np.where(
+            np.logical_and(f0_rmvpe_mel > eps, f0_crepe_mel - f0_rmvpe_mel > 0.05),
+            f0_crepe,
+            f0,
+        )
 
     f0_mel = 1127 * np.log(1 + f0 / 700)
 
