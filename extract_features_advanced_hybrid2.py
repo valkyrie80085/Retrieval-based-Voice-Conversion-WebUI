@@ -51,6 +51,8 @@ from infer.modules.vc.utils import load_hubert
 
 model = load_hubert(config=config, version=version)
 
+from nansy import change_gender_smart, random_eq, random_formant_f0
+
 
 model_rmvpe = None
 
@@ -85,10 +87,14 @@ def add_noise(contour, amp=5, scale=1):
 
 
 def perturb_waveform(waveform: np.ndarray, sr: int = 16000) -> np.ndarray:
-    from nansy import change_gender_smart, random_eq, random_formant_f0
     perturbed_waveform = random_formant_f0(waveform, sr)
     perturbed_waveform = random_eq(perturbed_waveform, sr)
     return np.clip(perturbed_waveform, -1.0, 1.0)
+
+
+def feature_blur(feats):
+    from scipy.ndimage import gaussian_filter1d
+    return gaussian_filter1d(feats, sigma=25, axis=0)
 
 
 vc_list = (
@@ -175,7 +181,8 @@ for i in range(len(vc_list)):
 
                 if vc_name is None:
                     feats = extract_features_simple_segment(
-                        perturb_waveform(load_audio(wav_path, 16000)) if random.randint(0, 1) == 0 else load_audio(wav_path, 16000), model=model, version=version, device=device
+#                        perturb_waveform(load_audio(wav_path, 16000)) if random.randint(0, 1) == 0 else 
+                        load_audio(wav_path, 16000), model=model, version=version, device=device
                     ).squeeze(0).float().cpu().numpy()
                 else:
                     feats = extract_features_simple_segment(
@@ -185,7 +192,8 @@ for i in range(len(vc_list)):
                     f0_resized = resize_with_zeros(f0_orig, feats.shape[0])
 
                     feats_original = extract_features_simple_segment(
-                        perturb_waveform(load_audio(wav_path, 16000)) if random.randint(0, 1) == 0 else load_audio(wav_path, 16000), model=model, version=version, device=device
+#                        perturb_waveform(load_audio(wav_path, 16000)) if random.randint(0, 1) == 0 else 
+                        load_audio(wav_path, 16000), model=model, version=version, device=device
                     ).squeeze(0).float().cpu().numpy()
 
                     feats_diff = np.pad(np.linalg.norm(feats_original[:-1] - feats_original[1:], axis=1), (1, 0))
@@ -210,6 +218,8 @@ for i in range(len(vc_list)):
                                 flag = True
                         if not good:
                             feats[i] = feats_original[i]
+
+                    feat = feats_original + feature_blur(feats) - feature_blur(feats_original)
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)

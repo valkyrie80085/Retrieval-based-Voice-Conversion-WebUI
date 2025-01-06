@@ -30,8 +30,6 @@ import parselmouth
 import soundfile as sf
 from scipy.signal import sosfilt
 
-warnings.simplefilter("error")
-
 Qmin, Qmax = 2, 5
 Fc = np.exp(np.linspace(np.log(60), np.log(7600), 10))
 
