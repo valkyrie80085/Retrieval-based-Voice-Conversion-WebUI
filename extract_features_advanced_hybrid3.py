@@ -1,4 +1,3 @@
-
 import os
 import sys
 import traceback
@@ -201,9 +200,7 @@ for i in range(len(vc_list)):
                 mask = resize_with_zeros(f0_orig > 0.001, feats.shape[0])
 
                 feats_diff = np.pad(
-                    np.linalg.norm(
-                        feats_original[:-1] - feats_original[1:], axis=1
-                    ),
+                    np.linalg.norm(feats_original[:-1] - feats_original[1:], axis=1),
                     (1, 0),
                 )
                 feats_diff = np.maximum(
