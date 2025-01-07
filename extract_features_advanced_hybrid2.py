@@ -185,13 +185,13 @@ for i in range(len(vc_list)):
                     perturb_waveform(load_audio(wav_path, 16000)) if random.randint(0, 1) == 0 else load_audio(wav_path, 16000), model=model, version=version, device=device
                 ).squeeze(0).float().cpu().numpy()
 
-                feats_original = extract_features_simple_segment(
-                    load_audio(wav_path, 16000), model=model, version=version, device=device
-                ).squeeze(0).float().cpu().numpy()
-
-                f0_resized = resize_with_zeros(f0_orig, feats_original.shape[0])
+                f0_resized = resize_with_zeros(f0_orig, feats_perturbed.shape[0])
 
                 if vc_name is None:
+                    feats_original = extract_features_simple_segment(
+                        load_audio(wav_path, 16000), model=model, version=version, device=device
+                    ).squeeze(0).float().cpu().numpy()
+
                     feats = feats_perturbed
                     feats[f0_resized < 0.001] = feats_original[f0_resized < 0.001]
                 else:
@@ -199,7 +199,7 @@ for i in range(len(vc_list)):
                         audio, model=model, version=version, device=device
                     ).squeeze(0).float().cpu().numpy()
 
-                    feats_diff = np.pad(np.linalg.norm(feats_original[:-1] - feats_original[1:], axis=1), (1, 0))
+                    feats_diff = np.pad(np.linalg.norm(feats_perturbed[:-1] - feats_perturbed[1:], axis=1), (1, 0))
                     feats_diff = np.maximum(feats_diff, np.pad(np.linalg.norm(feats[:-1] - feats[1:], axis=1), (1, 0)))
 
                     good = True
