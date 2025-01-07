@@ -102,6 +102,7 @@ n = max(1, total // 100)
 
 def perturb_waveform(waveform: np.ndarray, sr: int = 16000) -> np.ndarray:
     from nansy import change_gender_smart, random_eq, random_formant_f0
+
     perturbed_waveform = random_formant_f0(waveform, sr)
     perturbed_waveform = random_eq(perturbed_waveform, sr)
     return np.clip(perturbed_waveform, -1.0, 1.0)

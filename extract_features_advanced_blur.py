@@ -84,6 +84,7 @@ def add_noise(contour, amp=5, scale=1):
 
 def feature_blur(feats, sigma):
     from scipy.ndimage import gaussian_filter1d
+
     return gaussian_filter1d(feats, sigma=sigma, axis=0)
 
 
