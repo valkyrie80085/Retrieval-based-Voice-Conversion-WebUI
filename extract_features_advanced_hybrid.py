@@ -179,7 +179,7 @@ for i in range(len(vc_list)):
                     load_audio(wav_path, 16000), model=model, version=version, device=device
                 ).squeeze(0).float().cpu().numpy()
 
-                feat = feats_original + feature_blur(feats) - feature_blur(feats_original)
+                feats = feats_original + feature_blur(feats) - feature_blur(feats_original)
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)

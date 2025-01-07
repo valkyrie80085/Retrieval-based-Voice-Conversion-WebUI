@@ -199,10 +199,8 @@ for i in range(len(vc_list)):
                         audio, model=model, version=version, device=device
                     ).squeeze(0).float().cpu().numpy()
 
-                    feat = feats_original + feature_blur(feats) - feature_blur(feats_original)
-
                     feats_diff = np.pad(np.linalg.norm(feats_original[:-1] - feats_original[1:], axis=1), (1, 0))
-#                    feats_diff = np.maximum(feats_diff, np.pad(np.linalg.norm(feats[:-1] - feats[1:], axis=1), (1, 0)))
+                    feats_diff = np.maximum(feats_diff, np.pad(np.linalg.norm(feats[:-1] - feats[1:], axis=1), (1, 0)))
 
                     good = True
                     flag = True
