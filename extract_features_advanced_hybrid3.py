@@ -52,6 +52,8 @@ from infer.modules.vc.utils import load_hubert
 
 model = load_hubert(config=config, version=version)
 
+from nansy import change_gender_smart, random_eq, random_formant_f0
+
 
 model_rmvpe = None
 
@@ -83,6 +85,12 @@ def add_noise(contour, amp=5, scale=1):
     contour_with_noise = (np.exp(contour_with_noise / 1127) - 1) * 700
     contour_with_noise[zeros] = 0
     return contour_with_noise
+
+
+def perturb_waveform(waveform: np.ndarray, sr: int = 16000) -> np.ndarray:
+    perturbed_waveform = random_formant_f0(waveform, sr)
+    perturbed_waveform = random_eq(perturbed_waveform, sr)
+    return np.clip(perturbed_waveform, -1.0, 1.0)
 
 
 def feature_blur(feats):
@@ -175,19 +183,13 @@ for i in range(len(vc_list)):
                     os.remove(f0_npy_path)
                     audio = opt / max(np.abs(opt).max(), 32768)
 
-                feats = (
+                feats_perturbed = (
                     extract_features_simple_segment(
-                        audio, model=model, version=version, device=device
-                    )
-                    .squeeze(0)
-                    .float()
-                    .cpu()
-                    .numpy()
-                )
-
-                feats_original = (
-                    extract_features_simple_segment(
-                        load_audio(wav_path, 16000),
+                        (
+                            perturb_waveform(load_audio(wav_path, 16000))
+                            if random.randint(0, 1) == 0
+                            else load_audio(wav_path, 16000)
+                        ),
                         model=model,
                         version=version,
                         device=device,
@@ -198,24 +200,35 @@ for i in range(len(vc_list)):
                     .numpy()
                 )
 
+                feats = (
+                    extract_features_simple_segment(
+                        audio, model=model, version=version, device=device
+                    )
+                    .squeeze(0)
+                    .float()
+                    .cpu()
+                    .numpy()
+                )
+
                 mask = resize_with_zeros(f0_orig > 0.001, feats.shape[0])
 
-                feats_diff = np.pad(
-                    np.linalg.norm(
-                        feats_original[:-1] - feats_original[1:], axis=1
-                    ),
-                    (1, 0),
-                )
-                feats_diff = np.maximum(
-                    feats_diff,
-                    np.pad(np.linalg.norm(feats[:-1] - feats[1:], axis=1), (1, 0)),
-                )
+                if vc is not None:
+                    feats_diff = np.pad(
+                        np.linalg.norm(
+                            feats_perturbed[:-1] - feats_perturbed[1:], axis=1
+                        ),
+                        (1, 0),
+                    )
+                    feats_diff = np.maximum(
+                        feats_diff,
+                        np.pad(np.linalg.norm(feats[:-1] - feats[1:], axis=1), (1, 0)),
+                    )
 
-                mask *= feats_diff > 3.5
+                    mask *= feats_diff > 3.5
 
                 mask = mask[:, np.newaxis]
 
-                feats = feats * (1 - mask) + feats_original * mask
+                feats = feats * (1 - mask) + feats_perturbed * mask
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)
