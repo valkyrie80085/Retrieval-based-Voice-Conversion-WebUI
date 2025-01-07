@@ -29,6 +29,8 @@ sys.path.append(now_dir)
 from infer.lib.audio import load_audio
 from infer.lib.audio import extract_features_simple_segment
 
+from f0_magic_new_diff import resize_with_zeros
+
 from infer.modules.vc.modules import VC
 from configs.config import Config
 from scipy.io import wavfile
@@ -141,6 +143,7 @@ for i in range(len(vc_list)):
             try:
                 np.load(out_path)
             except:
+                f0_orig = np.load(f0_path)
                 if vc_name is None:
                     audio = load_audio(wav_path, 16000)
                 else:
@@ -149,8 +152,7 @@ for i in range(len(vc_list)):
                     #                        amp=random.uniform(0, 20),
                     #                        scale=random.randint(3, 10),
                     #                    )
-                    f0 = np.load(f0_path)
-                    f0 = f0 * (2 ** ((shift - random.uniform(0, 3)) / 12))
+                    f0 = f0_orig * (2 ** ((shift - random.uniform(0, 3)) / 12))
                     f0 = np.pad(f0, (300, 300))
                     np.save(f0_npy_path, f0, allow_pickle=False)
                     sr, opt = vc.vc_single(
@@ -195,9 +197,13 @@ for i in range(len(vc_list)):
                     .numpy()
                 )
 
-                feats = (
+                f0_resized = resize_with_zeros(f0_orig, feats.shape[0])
+
+                mask = f0_resized > 0.001
+
+                feats[mask] = (
                     feats_original + feature_blur(feats) - feature_blur(feats_original)
-                )
+                )[mask]
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)
