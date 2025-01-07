@@ -94,6 +94,7 @@ def perturb_waveform(waveform: np.ndarray, sr: int = 16000) -> np.ndarray:
 
 def feature_blur(feats):
     from scipy.ndimage import gaussian_filter1d
+
     return gaussian_filter1d(feats, sigma=25, axis=0)
 
 
@@ -181,13 +182,35 @@ for i in range(len(vc_list)):
                     os.remove(f0_npy_path)
                     audio = opt / max(np.abs(opt).max(), 32768)
 
-                feats_perturbed = extract_features_simple_segment(
-                    perturb_waveform(load_audio(wav_path, 16000)) if random.randint(0, 1) == 0 else load_audio(wav_path, 16000), model=model, version=version, device=device
-                ).squeeze(0).float().cpu().numpy()
+                feats_perturbed = (
+                    extract_features_simple_segment(
+                        (
+                            perturb_waveform(load_audio(wav_path, 16000))
+                            if random.randint(0, 1) == 0
+                            else load_audio(wav_path, 16000)
+                        ),
+                        model=model,
+                        version=version,
+                        device=device,
+                    )
+                    .squeeze(0)
+                    .float()
+                    .cpu()
+                    .numpy()
+                )
 
-                feats_original = extract_features_simple_segment(
-                    load_audio(wav_path, 16000), model=model, version=version, device=device
-                ).squeeze(0).float().cpu().numpy()
+                feats_original = (
+                    extract_features_simple_segment(
+                        load_audio(wav_path, 16000),
+                        model=model,
+                        version=version,
+                        device=device,
+                    )
+                    .squeeze(0)
+                    .float()
+                    .cpu()
+                    .numpy()
+                )
 
                 f0_resized = resize_with_zeros(f0_orig, feats_original.shape[0])
 
@@ -195,12 +218,26 @@ for i in range(len(vc_list)):
                     feats = feats_perturbed
                     feats[f0_resized < 0.001] = feats_original[f0_resized < 0.001]
                 else:
-                    feats = extract_features_simple_segment(
-                        audio, model=model, version=version, device=device
-                    ).squeeze(0).float().cpu().numpy()
+                    feats = (
+                        extract_features_simple_segment(
+                            audio, model=model, version=version, device=device
+                        )
+                        .squeeze(0)
+                        .float()
+                        .cpu()
+                        .numpy()
+                    )
 
-                    feats_diff = np.pad(np.linalg.norm(feats_original[:-1] - feats_original[1:], axis=1), (1, 0))
-                    feats_diff = np.maximum(feats_diff, np.pad(np.linalg.norm(feats[:-1] - feats[1:], axis=1), (1, 0)))
+                    feats_diff = np.pad(
+                        np.linalg.norm(
+                            feats_original[:-1] - feats_original[1:], axis=1
+                        ),
+                        (1, 0),
+                    )
+                    feats_diff = np.maximum(
+                        feats_diff,
+                        np.pad(np.linalg.norm(feats[:-1] - feats[1:], axis=1), (1, 0)),
+                    )
 
                     good = True
                     flag = True

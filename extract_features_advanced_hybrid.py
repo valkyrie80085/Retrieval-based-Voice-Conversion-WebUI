@@ -84,6 +84,7 @@ def add_noise(contour, amp=5, scale=1):
 
 def feature_blur(feats):
     from scipy.ndimage import gaussian_filter1d
+
     return gaussian_filter1d(feats, sigma=25, axis=0)
 
 
@@ -171,15 +172,32 @@ for i in range(len(vc_list)):
                     os.remove(f0_npy_path)
                     audio = opt / max(np.abs(opt).max(), 32768)
 
-                feats = extract_features_simple_segment(
-                    audio, model=model, version=version, device=device
-                ).squeeze(0).float().cpu().numpy()
+                feats = (
+                    extract_features_simple_segment(
+                        audio, model=model, version=version, device=device
+                    )
+                    .squeeze(0)
+                    .float()
+                    .cpu()
+                    .numpy()
+                )
 
-                feats_original = extract_features_simple_segment(
-                    load_audio(wav_path, 16000), model=model, version=version, device=device
-                ).squeeze(0).float().cpu().numpy()
+                feats_original = (
+                    extract_features_simple_segment(
+                        load_audio(wav_path, 16000),
+                        model=model,
+                        version=version,
+                        device=device,
+                    )
+                    .squeeze(0)
+                    .float()
+                    .cpu()
+                    .numpy()
+                )
 
-                feats = feats_original + feature_blur(feats) - feature_blur(feats_original)
+                feats = (
+                    feats_original + feature_blur(feats) - feature_blur(feats_original)
+                )
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)
