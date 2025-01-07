@@ -197,13 +197,11 @@ for i in range(len(vc_list)):
                     .numpy()
                 )
 
-                f0_resized = resize_with_zeros(f0_orig, feats.shape[0])
+                mask = resize_with_zeros(f0_orig < 0.001, feats.shape[0])[:, np.newaxis]
 
-                mask = f0_resized > 0.001
-
-                feats[mask] = (
+                feats = feats * mask + (
                     feats_original + feature_blur(feats) - feature_blur(feats_original)
-                )[mask]
+                ) * (1 - mask)
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)
