@@ -229,12 +229,12 @@ for i in range(len(vc_list)):
 
                 feats = feats * (1 - mask) + feats_perturbed * mask
 
-#                mask2 = resize_with_zeros(
-#                    (f0_orig > 0.001) & (f0_orig < 358), feats.shape[0]
-#                )
-#                mask2 = mask2[:, np.newaxis]
+                #                mask2 = resize_with_zeros(
+                #                    (f0_orig > 0.001) & (f0_orig < 358), feats.shape[0]
+                #                )
+                #                mask2 = mask2[:, np.newaxis]
 
-#                feats = feats * (1 - mask2) + feats_perturbed * mask2
+                #                feats = feats * (1 - mask2) + feats_perturbed * mask2
 
                 if np.isnan(feats).sum() == 0:
                     np.save(out_path, feats, allow_pickle=False)
