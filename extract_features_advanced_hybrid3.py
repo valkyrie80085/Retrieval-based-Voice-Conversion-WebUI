@@ -186,7 +186,7 @@ for i in range(len(vc_list)):
                     extract_features_simple_segment(
                         (
                             perturb_waveform(load_audio(wav_path, 16000))
-                            if False #random.randint(0, 1) == 0
+                            if False  # random.randint(0, 1) == 0
                             else load_audio(wav_path, 16000)
                         ),
                         model=model,
