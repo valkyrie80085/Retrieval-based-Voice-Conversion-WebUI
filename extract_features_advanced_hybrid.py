@@ -186,7 +186,7 @@ for i in range(len(vc_list)):
                     extract_features_simple_segment(
                         (
                             perturb_waveform(load_audio(wav_path, 16000))
-                            if False #random.randint(0, 1) == 0
+                            if False  # random.randint(0, 1) == 0
                             else load_audio(wav_path, 16000)
                         ),
                         model=model,
@@ -229,7 +229,9 @@ for i in range(len(vc_list)):
 
                 feats = feats * (1 - mask) + feats_perturbed * mask
 
-                mask2 = resize_with_zeros((f0_orig > 0.001) & (f0_orig < 358), feats.shape[0])
+                mask2 = resize_with_zeros(
+                    (f0_orig > 0.001) & (f0_orig < 358), feats.shape[0]
+                )
                 mask2 = mask2[:, np.newaxis]
 
                 feats = feats * (1 - mask2) + feats_perturbed * mask2
