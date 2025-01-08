@@ -238,6 +238,11 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
                 net_g,
                 optim_g,
             )
+            if True:
+                if hasattr(net_g, "module"):
+                    net_g.module.emb_g.weight.data.fill_(0)
+                else:
+                    net_g.emb_g.weight.data.fill_(0)
         except:
             #            import traceback
             #            print(traceback.format_exc())
