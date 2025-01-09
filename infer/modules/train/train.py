@@ -238,11 +238,6 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
                 net_g,
                 optim_g,
             )
-            if False:
-                if hasattr(net_g, "module"):
-                    net_g.module.emb_g.weight.data.fill_(0)
-                else:
-                    net_g.emb_g.weight.data.fill_(0)
         except:
             #            import traceback
             #            print(traceback.format_exc())
@@ -258,6 +253,11 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         global_step = (epoch_str - 1) * len(train_loader)
         # epoch_str = 1
         # global_step = 0
+        if False:
+            if hasattr(net_g, "module"):
+                net_g.module.emb_g.weight.data.fill_(0)
+            else:
+                net_g.emb_g.weight.data.fill_(0)
     except:  # 如果首次不能加载，加载pretrain
         #        import traceback
         #        traceback.print_exc()
