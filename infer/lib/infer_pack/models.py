@@ -802,7 +802,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
     ):
         g = self.emb_g(sid).unsqueeze(-1)
         _, m, logs, mask = self.enc_q(y, y_lengths, g=g)
-        return m * mask, logs
+        return m * mask, mask
 
     @torch.jit.export
     def get_hidden_features_p(
