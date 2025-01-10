@@ -204,7 +204,7 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
             for name, param in net_g.named_parameters()
             if "emb_g." not in name and ".cond" not in name
         ]
-#        to_optimize = net_g.parameters()
+    #        to_optimize = net_g.parameters()
     else:
         for __ in range(2, _):
             delattr(net_g, f"enc_p{__}")
