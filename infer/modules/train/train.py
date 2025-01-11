@@ -259,9 +259,9 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         # global_step = 0
         if False:
             if hasattr(net_g, "module"):
-                net_g.module.emb_g.weight.data.fill_(0)
+                net_g.module.emb_g.weight.data.mul_(0.0)
             else:
-                net_g.emb_g.weight.data.fill_(0)
+                net_g.emb_g.weight.data.mul_(0.0)
     except:  # 如果首次不能加载，加载pretrain
         #        import traceback
         #        traceback.print_exc()
