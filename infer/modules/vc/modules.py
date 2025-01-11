@@ -21,7 +21,7 @@ from infer.lib.train.mel_processing import spectrogram_torch
 
 import os, time
 
-ENC_Q = True
+ENC_Q = False
 
 
 class VC:
