@@ -37,7 +37,6 @@ for file_name in os.listdir(folder_f0):
         path_coarse = os.path.join(folder_coarse, file_name)
 
         limit = 0 if random.randint(0, 1) == 0 else random.randint(1, 10)
-        limit = 10
 
         f0 = np.load(path)
         old_f0 = f0.copy()
