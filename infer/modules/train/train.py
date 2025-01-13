@@ -199,11 +199,11 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         #            for name, param in net_g.named_parameters()
         #            if name.startswith(f"enc_p{_ - 1}.") or name.startswith("dec.")
         #        ]
-#                to_optimize = [
-#                    param
+        #        to_optimize = [
+        #            param
         #            for name, param in net_g.named_parameters()
-#                    if ("enc_p" in name or "flow" in name) and ".cond" not in name
-#                ]
+        #            if ("enc_p" in name or "flow" in name) and ".cond" not in name
+        #        ]
         to_optimize = net_g.parameters()
     else:
         for __ in range(2, _):
