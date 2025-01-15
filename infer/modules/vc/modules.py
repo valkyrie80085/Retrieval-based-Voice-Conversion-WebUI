@@ -132,14 +132,19 @@ class VC:
             del self.net_g.enc_q
 
         self.net_g.load_state_dict(self.cpt["weight"], strict=False)
-        if hasattr(self.net_g, "enc_p2"):
-            keep = False
-            for key in self.cpt["weight"].keys():
-                if "enc_p2." in key:
-                    keep = True
-                    break
-            if not keep:
-                del self.net_g.enc_p2
+        _ = 2
+        while True:
+            if hasattr(self.net_g, f"enc_p{_}"):
+                keep = False
+                for key in self.cpt["weight"].keys():
+                    if f"enc_p{_}." in key:
+                        keep = True
+                        break
+                if not keep:
+                    delattr(self.net_g, f"enc_p{_}")
+            else:
+                break
+            _ += 1
         self.net_g.eval().to(self.config.device)
         if self.config.is_half:
             self.net_g = self.net_g.half()
