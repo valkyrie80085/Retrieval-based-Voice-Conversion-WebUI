@@ -12,11 +12,12 @@ f0_min = 50.0
 f0_mel_min = 1127 * np.log(1 + f0_min / 700)
 f0_mel_max = 1127 * np.log(1 + f0_max / 700)
 
+
 def coarse_f0(f0):
     f0_mel = 1127 * np.log(1 + f0 / 700)
-    f0_mel[f0_mel > 0] = (f0_mel[f0_mel > 0] - f0_mel_min) * (
-        f0_bin - 2
-    ) / (f0_mel_max - f0_mel_min) + 1
+    f0_mel[f0_mel > 0] = (f0_mel[f0_mel > 0] - f0_mel_min) * (f0_bin - 2) / (
+        f0_mel_max - f0_mel_min
+    ) + 1
 
     # use 0 or 1
     f0_mel[f0_mel <= 1] = 1
@@ -28,8 +29,13 @@ def coarse_f0(f0):
     )
     return f0_coarse
 
-folder_f0 = "D:/matthew99/rvc/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test/2b-f0nsf"
-folder_coarse = "D:/matthew99/rvc/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test/2a_f0"
+
+folder_f0 = (
+    "D:/matthew99/rvc/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test/2b-f0nsf"
+)
+folder_coarse = (
+    "D:/matthew99/rvc/Retrieval-based-Voice-Conversion-WebUI/logs/mi-test/2a_f0"
+)
 
 for file_name in os.listdir(folder_f0):
     try:
@@ -62,7 +68,7 @@ for file_name in os.listdir(folder_f0):
                 last = i + 1
         f0_coarse = np.load(path_coarse)
         f0_coarse = coarse_f0(f0)
-        
+
         np.save(path, f0, allow_pickle=False)
         np.save(path_coarse, f0_coarse, allow_pickle=False)
     except:

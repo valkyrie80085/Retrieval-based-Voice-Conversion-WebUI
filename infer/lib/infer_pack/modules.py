@@ -620,11 +620,16 @@ class SinusoidalEmbedding(nn.Module):
         super(SinusoidalEmbedding, self).__init__()
         self.embedding_dim = embedding_dim
         self.num_embeddings = num_embeddings
-        self.register_buffer('embedding_table', self._create_embedding_table())
+        self.register_buffer("embedding_table", self._create_embedding_table())
 
     def _create_embedding_table(self):
-        position = torch.arange(0, self.num_embeddings, dtype=torch.float32).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, self.embedding_dim, 2).float() * (-math.log(10000.0) / self.embedding_dim))
+        position = torch.arange(0, self.num_embeddings, dtype=torch.float32).unsqueeze(
+            1
+        )
+        div_term = torch.exp(
+            torch.arange(0, self.embedding_dim, 2).float()
+            * (-math.log(10000.0) / self.embedding_dim)
+        )
         embeddings = torch.zeros(self.num_embeddings, self.embedding_dim)
         embeddings[:, 0::2] = torch.sin(position * div_term)
         embeddings[:, 1::2] = torch.cos(position * div_term)
