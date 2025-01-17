@@ -261,18 +261,26 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         net_g_real = net_g.module if hasattr(net_g, "module") else net_g
         if False:
             from infer.lib.infer_pack.modules import SinusoidalEmbedding
+
             _ = 2
             while True:
                 if hasattr(net_g_real, f"enc_p{_}"):
                     embedding_layer = getattr(net_g_real, f"enc_p{_}").emb_pitch
-                    num_embeddings, embedding_dim = embedding_layer.num_embeddings, embedding_layer.embedding_dim
-                    sinusoidal_embedding = SinusoidalEmbedding(num_embeddings, embedding_dim)
+                    num_embeddings, embedding_dim = (
+                        embedding_layer.num_embeddings,
+                        embedding_layer.embedding_dim,
+                    )
+                    sinusoidal_embedding = SinusoidalEmbedding(
+                        num_embeddings, embedding_dim
+                    )
 
                     with torch.no_grad():
-                        embedding_layer.weight.copy_(sinusoidal_embedding.embedding_table)
+                        embedding_layer.weight.copy_(
+                            sinusoidal_embedding.embedding_table
+                        )
                 else:
                     break
-                _ += 1 
+                _ += 1
         if False:
             net_g_real.emb_g.weight.data.mul_(0.0)
     except:  # 如果首次不能加载，加载pretrain
