@@ -202,7 +202,7 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         #        to_optimize = [
         #            param
         #            for name, param in net_g.named_parameters()
-        #            if ("enc_p" in name or "flow" in name) and ".cond" not in name
+        #            if ("enc_p" in name or "flow" in name) and ".cond" not in name and "emb_pitch." not in name
         #        ]
         to_optimize = net_g.parameters()
     else:
@@ -258,11 +258,23 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
         global_step = (epoch_str - 1) * len(train_loader)
         # epoch_str = 1
         # global_step = 0
+        net_g_real = net_g.module if hasattr(net_g, "module") else net_g
         if False:
-            if hasattr(net_g, "module"):
-                net_g.module.emb_g.weight.data.mul_(0.0)
-            else:
-                net_g.emb_g.weight.data.mul_(0.0)
+            from infer.lib.infer_pack.modules import SinusoidalEmbedding
+            _ = 2
+            while True:
+                if hasattr(net_g_real, f"enc_p{_}"):
+                    embedding_layer = getattr(net_g_real, f"enc_p{_}").emb_pitch
+                    num_embeddings, embedding_dim = embedding_layer.num_embeddings, embedding_layer.embedding_dim
+                    sinusoidal_embedding = SinusoidalEmbedding(num_embeddings, embedding_dim)
+
+                    with torch.no_grad():
+                        embedding_layer.weight.copy_(sinusoidal_embedding.embedding_table)
+                else:
+                    break
+                _ += 1 
+        if False:
+            net_g_real.emb_g.weight.data.mul_(0.0)
     except:  # 如果首次不能加载，加载pretrain
         #        import traceback
         #        traceback.print_exc()
