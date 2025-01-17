@@ -778,6 +778,7 @@ class SynthesizerTrnMs256NSFsid(nn.Module):
     ):  # 这里ds是id，[bs,1]
         # print(1,pitch.shape)#[bs,t]
         g = self.emb_g(ds).unsqueeze(-1)  # [b, 256, 1]##1是t，广播的
+        # g = g * torch.rand(1, dtype=g.dtype, device=g.device)
         m_p, logs_p, x_mask = self.call_enc_p(g, phone, pitch, phone_lengths)
         z, m_q, logs_q, y_mask = self.enc_q(y, y_lengths, g=g)
         z_slice, ids_slice = commons.rand_slice_segments(

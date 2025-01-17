@@ -275,6 +275,13 @@ def run(rank, n_gpus, hps, logger: logging.Logger):
                 _ += 1 
         if False:
             net_g_real.emb_g.weight.data.mul_(0.0)
+        if False:
+            num_embeddings = net_g_real.emb_g.num_embeddings
+            embedding_weight = net_g_real.emb_g.weight.data
+
+            for i in range(1, num_embeddings):
+                scaling_factor = (num_embeddings - i - 1) / (num_embeddings - 1)
+                embedding_weight[i] = scaling_factor * embedding_weight[0]
     except:  # 如果首次不能加载，加载pretrain
         #        import traceback
         #        traceback.print_exc()
