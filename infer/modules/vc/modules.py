@@ -161,14 +161,14 @@ class VC:
 
         return (
             (
-                {"visible": True, "maximum": n_spk, "__type__": "update"},
+                {"visible": True, "maximum": n_spk - 1, "__type__": "update"},
                 to_return_protect0,
                 to_return_protect1,
                 index,
                 index,
             )
             if to_return_protect
-            else {"visible": True, "maximum": n_spk, "__type__": "update"}
+            else {"visible": True, "maximum": n_spk - 1, "__type__": "update"}
         )
 
     def get_hidden_features(
