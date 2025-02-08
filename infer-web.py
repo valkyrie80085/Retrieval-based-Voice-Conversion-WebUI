@@ -1106,7 +1106,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                                     "保护清辅音和呼吸声，防止电音撕裂等artifact，拉满0.5不开启，调低加大保护力度但可能降低索引效果"
                                 )
                                 + " (note: max value changed from 0.5 to 1)",
-                                value=0.00,
+                                value=1.00,
                                 step=0.01,
                                 interactive=True,
                             )
@@ -1302,7 +1302,7 @@ with gr.Blocks(title="RVC WebUI") as app:
                                 "保护清辅音和呼吸声，防止电音撕裂等artifact，拉满0.5不开启，调低加大保护力度但可能降低索引效果"
                             )
                             + " (note: max value changed from 0.5 to 1)",
-                            value=0.00,
+                            value=1.00,
                             step=0.01,
                             interactive=True,
                         )
